@@ -3,9 +3,11 @@
 .env.local
 .env.*.local
 
-# Generated content & runtime
-novels/
+# Runtime (only logs/ — novels/ is committed for GitHub Pages static build)
 logs/
+
+# novels/ 백업 파일만 제외
+novels/**/*.bak
 
 # Python
 __pycache__/

@@ -328,6 +328,8 @@ def _writer_summary(state: PipelineState) -> dict:
 
 
 def _alert_and_halt(state: PipelineState) -> dict:
+    import json as _json
+
     settings: Settings = state["settings"]
     work_id = state["work_id"]
     chapter_n = state["chapter_n"]
@@ -335,6 +337,7 @@ def _alert_and_halt(state: PipelineState) -> dict:
     failure_reason = state.get("failure_reason") or ""
     started_at = state["started_at"]
     review_history = state["review_history"]
+    draft = state.get("draft", "") or ""
 
     msg = (
         f"[ALERT] {work_id} ch{chapter_n:03d} {failure_stage} 검수 "
@@ -351,6 +354,29 @@ def _alert_and_halt(state: PipelineState) -> dict:
         history=review_history,
         logs_dir=settings.logs_dir,
     )
+
+    # 구조화된 실패 누적 (휴먼 개입 + 패턴 분석용)
+    failures_dir = settings.logs_dir / "failures"
+    failures_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    failure_record = {
+        "work_id": work_id,
+        "chapter_n": chapter_n,
+        "failure_stage": failure_stage,
+        "failure_reason": failure_reason,
+        "started_at": started_at,
+        "failed_at": datetime.now(timezone.utc).isoformat(),
+        "max_retries": settings.max_retries,
+        "review_history": review_history,
+        "draft_chars": len(draft),
+        "draft_snippet_head": draft[:500],
+        "draft_snippet_tail": draft[-500:] if len(draft) > 500 else "",
+    }
+    failure_path = failures_dir / f"{ts}_ch{chapter_n:03d}_{failure_stage}.json"
+    failure_path.write_text(
+        _json.dumps(failure_record, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
     return {"success": False}
 
 

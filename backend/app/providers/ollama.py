@@ -47,19 +47,26 @@ class OllamaProvider(LLMProvider):
             body["format"] = format_schema
 
         t0 = time.time()
-        try:
-            resp = requests.post(
-                f"{self._base_url}/api/generate", json=body, timeout=self._timeout
-            )
-            resp.raise_for_status()
-            data = resp.json()
-        except requests.RequestException as e:
-            raise LLMProviderError(f"ollama 호출 실패: {e}") from e
+        last_err: Exception | None = None
+        for attempt in range(1, 4):  # 최대 3회 재시도 (transient connection reset 대비)
+            try:
+                resp = requests.post(
+                    f"{self._base_url}/api/generate", json=body, timeout=self._timeout
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                return LLMResponse(
+                    text=data.get("response", ""),
+                    input_tokens=int(data.get("prompt_eval_count", 0)),
+                    output_tokens=int(data.get("eval_count", 0)),
+                    duration_ms=int((time.time() - t0) * 1000),
+                    model_id=self._model_id,
+                )
+            except requests.RequestException as e:
+                last_err = e
+                # ConnectionReset / 짧은 SocketError 같은 transient — 잠시 대기 후 재시도
+                wait = 5 * attempt
+                print(f"  [ollama] 호출 실패 (시도 {attempt}/3): {e} — {wait}초 대기 후 재시도", flush=True)
+                time.sleep(wait)
 
-        return LLMResponse(
-            text=data.get("response", ""),
-            input_tokens=int(data.get("prompt_eval_count", 0)),
-            output_tokens=int(data.get("eval_count", 0)),
-            duration_ms=int((time.time() - t0) * 1000),
-            model_id=self._model_id,
-        )
+        raise LLMProviderError(f"ollama 호출 3회 모두 실패: {last_err}")

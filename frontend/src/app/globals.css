@@ -1,0 +1,70 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --font-family-sans: "Pretendard", "-apple-system", "BlinkMacSystemFont",
+    "sans-serif";
+  --font-family-serif: "Georgia", "serif";
+}
+
+/* Dark mode by class */
+@variant dark (&:where(.dark, .dark *));
+
+:root {
+  /* Light mode */
+  --bg-base: #f5f0e8;
+  --bg-card: #ffffff;
+  --bg-chip: #f0ebe0;
+  --text-primary: #1a1a1a;
+  --text-secondary: #555555;
+  --text-muted: #888888;
+  --border: #e0d8cc;
+  --accent: #6c3ce1;
+}
+
+.dark {
+  --bg-base: #141418;
+  --bg-card: #1e1e24;
+  --bg-chip: #2a2a32;
+  --text-primary: #f0f0f0;
+  --text-secondary: #b0b0b8;
+  --text-muted: #707078;
+  --border: #2e2e38;
+  --accent: #9068ff;
+}
+
+body {
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-family-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Smooth color transitions */
+*, *::before, *::after {
+  transition: background-color 200ms, border-color 200ms, color 200ms;
+}
+
+/* Reader typography */
+.reader-body {
+  font-family: var(--font-family-sans);
+  font-size: var(--reader-font-size, 18px);
+  line-height: 1.9;
+  color: var(--text-primary);
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+.reader-body p {
+  margin-bottom: 1.25em;
+}
+
+.reader-body blockquote {
+  border-left: none;
+  margin: 0 0 1.5em 0;
+  padding: 0.75em 1em;
+  background: var(--bg-chip);
+  border-radius: 8px;
+  font-size: 0.875em;
+  color: var(--text-secondary);
+}

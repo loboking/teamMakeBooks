@@ -1,0 +1,31 @@
+# 팀·역할별 모델 선택
+# 형식: "<provider>:<model_name>"
+
+teams:
+  writer:
+    model: "ollama:gemma4:e2b"
+  reviewer:
+    direction:
+      model: "ollama:gemma4:e2b"
+    character:
+      model: "ollama:gemma4:e2b"
+    quality:
+      model: "ollama:gemma4:e2b"
+  publisher:
+    model: "ollama:gemma4:e2b"
+
+pipeline:
+  max_retries: 3
+  recent_summaries_n: 3
+
+writer:
+  beat_temperature: 0.85
+  beat_num_predict: 4000
+
+reviewer:
+  temperature: 0.2
+  num_predict: 600
+
+publisher:
+  temperature: 0.4
+  num_predict: 600

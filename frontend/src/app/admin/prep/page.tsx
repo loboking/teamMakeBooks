@@ -1,4 +1,5 @@
-"use client";
+"use client"
+import { useAdminWork } from "@/lib/admin";
 
 import { useState, useEffect } from "react";
 
@@ -11,6 +12,7 @@ const DOCS = [
 ];
 
 export default function PrepPage() {
+  const { selectedWork } = useAdminWork();
   const [activeDoc, setActiveDoc] = useState("world_bible");
   const [content, setContent] = useState("");
   const [saved, setSaved] = useState(true);
@@ -19,15 +21,15 @@ export default function PrepPage() {
   useEffect(() => {
     setSaved(true);
     setContent("로딩...");
-    fetch(`/api/works/modern_fantasy_game_01/prep/${activeDoc}`)
+    fetch(`/api/works/${selectedWork}/prep/${activeDoc}`)
       .then((r) => r.json())
       .then((d) => setContent(d.content || ""))
       .catch(() => setContent(""));
-  }, [activeDoc]);
+  }, [activeDoc, selectedWork]);
 
   const handleSave = () => {
     setSaving(true);
-    fetch(`/api/works/modern_fantasy_game_01/prep/${activeDoc}`, {
+    fetch(`/api/works/${selectedWork}/prep/${activeDoc}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content }),

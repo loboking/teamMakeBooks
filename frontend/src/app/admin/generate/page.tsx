@@ -1,9 +1,11 @@
+"use client";
+
+import { useAdminWork } from "@/lib/admin";
 import ScheduleControl from "@/components/admin/ScheduleControl";
 import PipelineStatus from "@/components/admin/PipelineStatus";
 
-const WORK_ID = "modern_fantasy_game_01";
-
 export default function GeneratePage() {
+  const { selectedWork } = useAdminWork();
   return (
     <div className="space-y-6">
       <div>
@@ -11,8 +13,8 @@ export default function GeneratePage() {
         <p className="text-sm text-[var(--text-muted)]">챕터 자동 생성 스케줄을 관리합니다.</p>
       </div>
 
-      <ScheduleControl workId={WORK_ID} />
-      <PipelineStatus workId={WORK_ID} />
+      <ScheduleControl workId={selectedWork} />
+      <PipelineStatus workId={selectedWork} />
     </div>
   );
 }

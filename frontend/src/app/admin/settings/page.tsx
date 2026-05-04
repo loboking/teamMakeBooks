@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useAdminWork } from "@/lib/admin";
 
 type Config = {
   temperature: number;
@@ -8,9 +9,9 @@ type Config = {
   [key: string]: any;
 };
 
-const WORK_ID = "modern_fantasy_game_01";
 
 export default function SettingsPage() {
+  const { selectedWork } = useAdminWork();
   const [config, setConfig] = useState<Config | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -26,7 +27,7 @@ export default function SettingsPage() {
   const fetchConfig = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/works/${WORK_ID}/config`);
+      const res = await fetch(`/api/works/${selectedWork}/config`);
       if (res.ok) {
         const data = await res.json();
         setConfig(data);
@@ -43,7 +44,7 @@ export default function SettingsPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const res = await fetch(`/api/works/${WORK_ID}/config`, {
+      const res = await fetch(`/api/works/${selectedWork}/config`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ temperature, num_predict: numPredict }),

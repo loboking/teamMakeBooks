@@ -1,4 +1,5 @@
-"use client";
+"use client"
+import { useAdminWork } from "@/lib/admin";
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
@@ -7,6 +8,7 @@ type Issue = { type: string; chapter?: number; msg: string };
 type Warning = { type: string; msg: string };
 
 export default function ValidatePage() {
+  const { selectedWork } = useAdminWork();
   const [result, setResult] = useState<{
     total_chapters: number;
     issues: Issue[];
@@ -20,8 +22,8 @@ export default function ValidatePage() {
   const runValidation = () => {
     setLoading(true);
     Promise.all([
-      fetch("/api/works/modern_fantasy_game_01/validate").then((r) => r.json()),
-      fetch("/api/works/modern_fantasy_game_01/summaries").then((r) => r.json()),
+      fetch(`/api/works/${selectedWork}/validate`).then((r) => r.json()),
+      fetch(`/api/works/${selectedWork}/summaries`).then((r) => r.json()),
     ])
       .then(([v, s]) => {
         setResult(v);

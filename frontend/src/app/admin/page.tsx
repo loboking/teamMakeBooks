@@ -1,58 +1,52 @@
-import { getWork } from "@/lib/data";
+"use client";
+
+import { useState, useEffect } from "react";
+import { useAdminWork } from "@/lib/admin";
 import StatusBadge from "@/components/admin/StatusBadge";
 import PipelineStatus from "@/components/admin/PipelineStatus";
 import Link from "next/link";
 
-const WORK_ID = "modern_fantasy_game_01";
+export default function AdminPage() {
+  const { selectedWork } = useAdminWork();
+  const [stats, setStats] = useState<any>(null);
+  const [chapterStats, setChapterStats] = useState({ total: 0, passed: 0, failed: 0, pending: 0 });
+  const [loading, setLoading] = useState(true);
 
-async function getDashboardStats() {
-  try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/works/${WORK_ID}`, {
-      cache: "no-store",
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      fetch(`/api/works/${selectedWork}`).then((r) => r.ok ? r.json() : null).catch(() => null),
+      fetch(`/api/works/${selectedWork}/chapters`).then((r) => r.ok ? r.json() : []).catch(() => []),
+    ]).then(([s, chapters]) => {
+      setStats(s);
+      setChapterStats({
+        total: chapters.length,
+        passed: chapters.filter((ch: any) => ch.status === "passed").length,
+        failed: chapters.filter((ch: any) => ch.status === "failed").length,
+        pending: chapters.filter((ch: any) => !ch.status || ch.status === "pending").length,
+      });
+      setLoading(false);
     });
-    if (res.ok) {
-      return await res.json();
-    }
-  } catch (e) {
-    console.error("Failed to fetch stats:", e);
-  }
-  return null;
-}
+  }, [selectedWork]);
 
-async function getChapterStats() {
-  try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/works/${WORK_ID}/chapters`, {
-      cache: "no-store",
-    });
-    if (res.ok) {
-      const chapters = await res.json();
-      const passed = chapters.filter((ch: any) => ch.status === "passed").length;
-      const failed = chapters.filter((ch: any) => ch.status === "failed").length;
-      const pending = chapters.filter((ch: any) => !ch.status || ch.status === "pending").length;
-      return { total: chapters.length, passed, failed, pending };
-    }
-  } catch (e) {
-    console.error("Failed to fetch chapters:", e);
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
   }
-  return { total: 0, passed: 0, failed: 0, pending: 0 };
-}
-
-export default async function AdminPage() {
-  const work = getWork(WORK_ID);
-  const stats = await getDashboardStats();
-  const chapterStats = await getChapterStats();
 
   return (
     <div className="space-y-6">
-      {/* Work info card */}
-      {work && (
+      {stats && (
         <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-6">
-          <h2 className="text-lg font-bold text-[var(--text-primary)] mb-4">{work.title}</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <h2 className="text-lg font-bold text-[var(--text-primary)] mb-4">{stats.title || selectedWork}</h2>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <p className="text-xs text-[var(--text-muted)]">장르</p>
               <p className="text-sm font-medium text-[var(--text-primary)]">
-                {work.genre === "modern_fantasy_game" ? "현대판타지" : work.genre}
+                {stats.genre || "-"}
               </p>
             </div>
             <div>
@@ -61,17 +55,12 @@ export default async function AdminPage() {
             </div>
             <div>
               <p className="text-xs text-[var(--text-muted)]">발행 챕터</p>
-              <p className="text-sm font-medium text-[var(--text-primary)]">{work.publishedChapters}화</p>
-            </div>
-            <div>
-              <p className="text-xs text-[var(--text-muted)]">작가</p>
-              <p className="text-sm font-medium text-[var(--text-primary)]">{work.author.name}</p>
+              <p className="text-sm font-medium text-[var(--text-primary)]">{stats.published_chapters ?? "-"}화</p>
             </div>
           </div>
         </div>
       )}
 
-      {/* Stats grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Link href="/admin/chapters?filter=passed" className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-6 hover:border-emerald-500/30 transition-colors">
           <div className="flex items-center justify-between">
@@ -117,7 +106,6 @@ export default async function AdminPage() {
         </Link>
       </div>
 
-      {/* Schedule status */}
       <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-[var(--text-primary)]">현재 스케줄</h3>
@@ -153,8 +141,7 @@ export default async function AdminPage() {
         )}
       </div>
 
-      {/* Pipeline status */}
-      <PipelineStatus workId={WORK_ID} />
+      <PipelineStatus workId={selectedWork} />
     </div>
   );
 }

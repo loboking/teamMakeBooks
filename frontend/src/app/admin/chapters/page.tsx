@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useAdminWork } from "@/lib/admin";
 import ChapterTable from "@/components/admin/ChapterTable";
 
-const WORK_ID = "modern_fantasy_game_01";
 
 type Chapter = {
   n: number;
@@ -14,6 +14,7 @@ type Chapter = {
 };
 
 export default function ChaptersPage() {
+  const { selectedWork } = useAdminWork();
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -24,7 +25,7 @@ export default function ChaptersPage() {
   const fetchChapters = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/works/${WORK_ID}/chapters`);
+      const res = await fetch(`/api/works/${selectedWork}/chapters`);
       if (res.ok) {
         const data = await res.json();
         setChapters(data);

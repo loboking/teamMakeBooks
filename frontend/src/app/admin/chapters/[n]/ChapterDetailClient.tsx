@@ -5,8 +5,7 @@ import Link from "next/link";
 import ChapterEditor from "@/components/admin/ChapterEditor";
 import ReviewReport from "@/components/admin/ReviewReport";
 import StatusBadge from "@/components/admin/StatusBadge";
-
-const WORK_ID = "modern_fantasy_game_01";
+import { useAdminWork } from "@/lib/admin";
 
 type Chapter = {
   n: number;
@@ -27,6 +26,7 @@ type Props = {
 };
 
 export default function ChapterDetailClient({ chapterN, workTitle }: Props) {
+  const { selectedWork } = useAdminWork();
   const [chapter, setChapter] = useState<Chapter | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -38,7 +38,7 @@ export default function ChapterDetailClient({ chapterN, workTitle }: Props) {
   const fetchChapter = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/works/${WORK_ID}/chapters/${chapterN}`);
+      const res = await fetch(`/api/works/${selectedWork}/chapters/${chapterN}`);
       if (res.ok) {
         const data = await res.json();
         setChapter(data);
@@ -53,7 +53,7 @@ export default function ChapterDetailClient({ chapterN, workTitle }: Props) {
   const handleSaveBody = async (content: string) => {
     setSaving(true);
     try {
-      const res = await fetch(`/api/works/${WORK_ID}/chapters/${chapterN}`, {
+      const res = await fetch(`/api/works/${selectedWork}/chapters/${chapterN}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ body: content }),
@@ -71,7 +71,7 @@ export default function ChapterDetailClient({ chapterN, workTitle }: Props) {
   const handleRegenerate = async () => {
     if (!confirm("이 챕터를 다시 생성하시겠습니까?")) return;
     try {
-      const res = await fetch(`/api/works/${WORK_ID}/chapters/${chapterN}/regenerate`, {
+      const res = await fetch(`/api/works/${selectedWork}/chapters/${chapterN}/regenerate`, {
         method: "POST",
       });
       if (res.ok) {
@@ -84,7 +84,7 @@ export default function ChapterDetailClient({ chapterN, workTitle }: Props) {
 
   const handleReReview = async () => {
     try {
-      const res = await fetch(`/api/works/${WORK_ID}/chapters/${chapterN}/review`, {
+      const res = await fetch(`/api/works/${selectedWork}/chapters/${chapterN}/review`, {
         method: "POST",
       });
       if (res.ok) {
@@ -98,7 +98,7 @@ export default function ChapterDetailClient({ chapterN, workTitle }: Props) {
   const handlePublish = async () => {
     if (!confirm("텔레그램에 발행하시겠습니까?")) return;
     try {
-      const res = await fetch(`/api/works/${WORK_ID}/chapters/${chapterN}/publish`, {
+      const res = await fetch(`/api/works/${selectedWork}/chapters/${chapterN}/publish`, {
         method: "POST",
       });
       if (res.ok) {

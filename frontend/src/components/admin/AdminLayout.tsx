@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import Link from "next/link";
+import { AdminContext } from "@/lib/admin";
 import DarkModeToggle from "@/components/DarkModeToggle";
 
 const navItems = [
@@ -20,9 +21,8 @@ type Props = {
   workTitle?: string;
 };
 
-export default function AdminLayout({ children, workTitle = "무등급헌터" }: Props) {
+export default function AdminLayout({ children }: Props) {
   const pathname = usePathname();
-  const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [works, setWorks] = useState<{ work_id: string; title: string }[]>([]);
   const [selectedWork, setSelectedWork] = useState("modern_fantasy_game_01");
@@ -34,12 +34,10 @@ export default function AdminLayout({ children, workTitle = "무등급헌터" }:
       .catch(() => {});
   }, []);
 
-  const currentWork = works.find((w) => w.work_id === selectedWork);
-  const displayTitle = currentWork?.title || selectedWork;
-
   const currentPage = navItems.find((i) => i.href === pathname)?.label ?? "관리자";
 
   return (
+    <AdminContext.Provider value={{ selectedWork, setSelectedWork }}>
     <div className="min-h-screen bg-[var(--bg-base)] flex flex-col md:flex-row">
       {/* 모바일 상단바 */}
       <header className="md:hidden h-12 bg-[var(--bg-card)] border-b border-[var(--border)] flex items-center justify-between px-3 gap-2 shrink-0">
@@ -176,5 +174,6 @@ export default function AdminLayout({ children, workTitle = "무등급헌터" }:
         <main className="flex-1 p-3 md:p-6 overflow-auto">{children}</main>
       </div>
     </div>
+    </AdminContext.Provider>
   );
 }

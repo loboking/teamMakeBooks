@@ -1,0 +1,1 @@
+"""FastAPI admin panel API."""

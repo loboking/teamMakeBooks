@@ -14,6 +14,16 @@ const nextConfig: NextConfig = {
   // user.github.io/teamMakeBooks 서브패스 대응
   basePath: isProd ? `/${repo}` : "",
   assetPrefix: isProd ? `/${repo}/` : "",
+
+  // API proxy for backend
+  async rewrites() {
+    return [
+      {
+        source: "/api/:path*",
+        destination: "http://localhost:8000/api/:path*",
+      },
+    ];
+  },
 };
 
 export default nextConfig;

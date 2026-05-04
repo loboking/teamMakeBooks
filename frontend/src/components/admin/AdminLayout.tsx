@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { usePathname } from "next/navigation";
+import { useState, useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import DarkModeToggle from "@/components/DarkModeToggle";
 
@@ -10,6 +10,8 @@ const navItems = [
   { href: "/admin/chapters", label: "챕터", icon: "📖" },
   { href: "/admin/generate", label: "생성", icon: "⚙️" },
   { href: "/admin/models", label: "모델", icon: "🤖" },
+  { href: "/admin/prep", label: "준비", icon: "📝" },
+  { href: "/admin/validate", label: "검증", icon: "✅" },
   { href: "/admin/settings", label: "설정", icon: "🔧" },
 ];
 
@@ -20,15 +22,36 @@ type Props = {
 
 export default function AdminLayout({ children, workTitle = "무등급헌터" }: Props) {
   const pathname = usePathname();
+  const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [works, setWorks] = useState<{ work_id: string; title: string }[]>([]);
+  const [selectedWork, setSelectedWork] = useState("modern_fantasy_game_01");
+
+  useEffect(() => {
+    fetch("/api/works")
+      .then((r) => r.json())
+      .then((d) => setWorks(d.works || []))
+      .catch(() => {});
+  }, []);
+
+  const currentWork = works.find((w) => w.work_id === selectedWork);
+  const displayTitle = currentWork?.title || selectedWork;
 
   const currentPage = navItems.find((i) => i.href === pathname)?.label ?? "관리자";
 
   return (
     <div className="min-h-screen bg-[var(--bg-base)] flex flex-col md:flex-row">
       {/* 모바일 상단바 */}
-      <header className="md:hidden h-12 bg-[var(--bg-card)] border-b border-[var(--border)] flex items-center justify-between px-4 shrink-0">
-        <h1 className="font-bold text-sm text-[var(--text-primary)] truncate">{workTitle}</h1>
+      <header className="md:hidden h-12 bg-[var(--bg-card)] border-b border-[var(--border)] flex items-center justify-between px-3 gap-2 shrink-0">
+        <select
+          value={selectedWork}
+          onChange={(e) => setSelectedWork(e.target.value)}
+          className="flex-1 bg-[var(--bg-base)] border border-[var(--border)] rounded-lg px-2 py-1.5 text-xs text-[var(--text-primary)] max-w-[140px]"
+        >
+          {works.map((w) => (
+            <option key={w.work_id} value={w.work_id}>{w.title}</option>
+          ))}
+        </select>
         <div className="flex items-center gap-2">
           <DarkModeToggle />
           <button
@@ -82,8 +105,34 @@ export default function AdminLayout({ children, workTitle = "무등급헌터" }:
       {/* 데스크톱 사이드바 */}
       <aside className="hidden md:flex w-52 lg:w-56 bg-[var(--bg-card)] border-r border-[var(--border)] flex-col shrink-0">
         <div className="p-4 border-b border-[var(--border)]">
-          <h1 className="font-bold text-lg text-[var(--text-primary)]">{workTitle}</h1>
-          <p className="text-xs text-[var(--text-muted)] mt-1">관리자 패널</p>
+          <select
+            value={selectedWork}
+            onChange={(e) => setSelectedWork(e.target.value)}
+            className="w-full bg-[var(--bg-base)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]"
+          >
+            {works.map((w) => (
+              <option key={w.work_id} value={w.work_id}>{w.title}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => {
+              const title = prompt("새 작품 제목:");
+              if (title) {
+                fetch("/api/works", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ title }),
+                })
+                  .then((r) => r.json())
+                  .then((d) => {
+                    if (d.work_id) { setSelectedWork(d.work_id); setWorks((prev) => [...prev, { work_id: d.work_id, title: d.title }]); }
+                  });
+              }
+            }}
+            className="mt-2 w-full text-xs text-center py-1.5 rounded-lg bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors"
+          >
+            + 새 작품
+          </button>
         </div>
         <nav className="flex-1 p-2 space-y-1">
           {navItems.map((item) => {

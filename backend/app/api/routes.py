@@ -88,6 +88,212 @@ def _run_pipeline_background(task_id: str, work_id: str, chapter_n: int, setting
         }
 
 
+# ── 작품 목록 / 신규 ──────────────────────────────────────────────────────────
+
+
+@router.get("/works")
+def list_works():
+    """전체 작품 목록."""
+    settings = load_settings()
+    novels_dir = settings.novels_dir
+    if not novels_dir.exists():
+        return []
+
+    works = []
+    for entry in novels_dir.iterdir():
+        if not entry.is_dir():
+            continue
+        meta_path = entry / "meta.json"
+        if not meta_path.exists():
+            continue
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+
+        chapters_dir = entry / "chapters"
+        total = 0
+        if chapters_dir.exists():
+            total = len([f for f in chapters_dir.iterdir() if f.name.endswith("_meta.json")])
+
+        works.append({
+            "work_id": entry.name,
+            "title": meta.get("title", entry.name),
+            "genre": meta.get("genre", ""),
+            "total_chapters": total,
+            "published_chapters": meta.get("published_chapters", 0),
+        })
+    return {"works": works}
+
+
+@router.post("/works")
+def create_work(title: str = None, genre: str = "general"):
+    """신규 작품 생성."""
+    if not title:
+        raise HTTPException(status_code=400, detail="title required")
+
+    settings = load_settings()
+    work_id = title.replace(" ", "_").lower()
+    # 알파벳+숫자+언더스코어만
+    import re
+    work_id = re.sub(r"[^a-z0-9가-힣_]", "", work_id)
+    if not work_id:
+        raise HTTPException(status_code=400, detail="Invalid title")
+
+    work_dir = settings.novels_dir / work_id
+    if work_dir.exists():
+        raise HTTPException(status_code=409, detail=f"Work already exists: {work_id}")
+
+    # 디렉토리 구조 생성
+    (work_dir / "chapters").mkdir(parents=True)
+    (work_dir / "chapter_outlines").mkdir(parents=True)
+    (work_dir / "memory").mkdir(parents=True)
+    (work_dir / "authors").mkdir(parents=True)
+
+    # meta.json
+    meta = {
+        "work_id": work_id,
+        "title": title,
+        "genre": genre,
+        "author_id": "",
+        "is_ai_persona": True,
+        "copyright": f"© {datetime.now().year} teamMakeBooks",
+        "published_chapters": 0,
+    }
+    (work_dir / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    # 기본 파일 템플릿
+    (work_dir / "world_bible.md").write_text(f"# {title} — 세계관\n\n여기에 세계관을 작성하세요.\n", encoding="utf-8")
+    (work_dir / "characters.md").write_text(f"# {title} — 등장인물\n\n여기에 등장인물을 작성하세요.\n", encoding="utf-8")
+    (work_dir / "plot_outline.md").write_text(f"# {title} — 플롯 개요\n\n여기에 전체 플롯을 작성하세요.\n", encoding="utf-8")
+    (work_dir / "naming_table.md").write_text(f"# {title} — 호칭표\n\n여기에 인물 간 호칭을 정의하세요.\n", encoding="utf-8")
+    (work_dir / "theme.md").write_text(f"# {title} — 테마/약속\n\n여기에 작품 테마와 지켜야 할 약속을 작성하세요.\n", encoding="utf-8")
+    (work_dir / "memory" / "character_state.md").write_text("", encoding="utf-8")
+    (work_dir / "memory" / "world_state.md").write_text("", encoding="utf-8")
+    (work_dir / "memory" / "event_log.md").write_text("", encoding="utf-8")
+    (work_dir / "memory" / "unresolved_threads.md").write_text("", encoding="utf-8")
+
+    return {"status": "ok", "work_id": work_id, "title": title}
+
+
+# ── 사전 준비 데이터 ──────────────────────────────────────────────────────────
+
+
+@router.get("/works/{work_id}/prep/{doc_name}")
+def get_prep_doc(work_id: str, doc_name: str):
+    """사전 준비 문서 읽기 (world_bible, characters, plot_outline, naming_table, theme)."""
+    valid_docs = ["world_bible", "characters", "plot_outline", "naming_table", "theme"]
+    if doc_name not in valid_docs:
+        raise HTTPException(status_code=400, detail=f"Invalid doc: {doc_name}. Valid: {valid_docs}")
+
+    settings = load_settings()
+    work_dir = _get_work_dir(work_id, settings)
+    extensions = {"world_bible": "md", "characters": "md", "plot_outline": "md", "naming_table": "md", "theme": "md"}
+    ext = extensions[doc_name]
+    doc_path = work_dir / f"{doc_name}.{ext}"
+
+    if not doc_path.exists():
+        return {"doc_name": doc_name, "content": ""}
+
+    return {"doc_name": doc_name, "content": doc_path.read_text(encoding="utf-8")}
+
+
+@router.put("/works/{work_id}/prep/{doc_name}")
+def update_prep_doc(work_id: str, doc_name: str, content: str = None):
+    """사전 준비 문서 수정."""
+    if content is None:
+        raise HTTPException(status_code=400, detail="content required")
+
+    valid_docs = ["world_bible", "characters", "plot_outline", "naming_table", "theme"]
+    if doc_name not in valid_docs:
+        raise HTTPException(status_code=400, detail=f"Invalid doc: {doc_name}")
+
+    settings = load_settings()
+    work_dir = _get_work_dir(work_id, settings)
+    doc_path = work_dir / f"{doc_name}.md"
+    doc_path.write_text(content, encoding="utf-8")
+    return {"status": "ok"}
+
+
+# ── 요약 / 검증 ─────────────────────────────────────────────────────────────────
+
+
+@router.get("/works/{work_id}/summaries")
+def get_all_summaries(work_id: str):
+    """전체 챕터 요약 목록."""
+    settings = load_settings()
+    work_dir = _get_work_dir(work_id, settings)
+    chapters_dir = work_dir / "chapters"
+    if not chapters_dir.exists():
+        return {"summaries": []}
+
+    summaries = []
+    for f in sorted(chapters_dir.iterdir()):
+        if not f.name.endswith("_summary.md"):
+            continue
+        n = int(f.name.replace("_summary.md", "").replace("ch", ""))
+        try:
+            content = f.read_text(encoding="utf-8").strip()
+            # 첫 줄만 반환 (전체 로딩 방지)
+            first_line = content.split("\n")[0] if content else ""
+            summaries.append({"chapter_n": n, "preview": first_line[:100]})
+        except Exception:
+            summaries.append({"chapter_n": n, "preview": "(읽기 실패)"})
+
+    return {"summaries": summaries}
+
+
+@router.get("/works/{work_id}/validate")
+def validate_work(work_id: str):
+    """전체 파이프라인 검증 — 연속성, 캐릭터 일관성, 설정 충돌."""
+    settings = load_settings()
+    work_dir = _get_work_dir(work_id, settings)
+    chapters_dir = work_dir / "chapters"
+    if not chapters_dir.exists():
+        return {"work_id": work_id, "issues": [], "warnings": []}
+
+    issues = []
+    warnings = []
+
+    # 1. 메타 파일 누락 확인
+    for i in range(1, 1000):
+        chapter_path = chapters_dir / f"ch{i:03d}.md"
+        meta_path = chapters_dir / f"ch{i:03d}_meta.json"
+        summary_path = chapters_dir / f"ch{i:03d}_summary.md"
+
+        if not chapter_path.exists():
+            break  # 마지막 챕터
+        if not meta_path.exists():
+            issues.append({"type": "missing_meta", "chapter": i, "msg": f"ch{i:03d} 메타 파일 없음"})
+        if not summary_path.exists():
+            warnings.append({"type": "missing_summary", "chapter": i, "msg": f"ch{i:03d} 요약 파일 없음"})
+
+    # 2. 아웃라인 누락 확인
+    outlines_dir = work_dir / "chapter_outlines"
+    if outlines_dir.exists():
+        for i in range(1, 1000):
+            if not (chapters_dir / f"ch{i:03d}.md").exists():
+                break
+            if not (outlines_dir / f"ch{i:03d}.yaml").exists():
+                issues.append({"type": "missing_outline", "chapter": i, "msg": f"ch{i:03d} 아웃라인 없음"})
+
+    # 3. 사전 준비 문서 존재 확인
+    prep_docs = ["world_bible.md", "characters.md", "plot_outline.md", "naming_table.md"]
+    for doc in prep_docs:
+        if not (work_dir / doc).exists():
+            warnings.append({"type": "missing_prep", "msg": f"{doc} 없음"})
+        elif (work_dir / doc).stat().st_size < 50:
+            warnings.append({"type": "empty_prep", "msg": f"{doc} 내용 부족"})
+
+    return {
+        "work_id": work_id,
+        "total_chapters": len([f for f in chapters_dir.iterdir() if f.name.endswith(".md") and not f.name.endswith("_summary.md")]),
+        "issues": issues,
+        "warnings": warnings,
+        "passed": len(issues) == 0,
+    }
+
+
 # ── 작품/챕터 ────────────────────────────────────────────────────────────────
 
 

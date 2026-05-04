@@ -76,7 +76,7 @@ function parseAuthor(authorId: string): AuthorPersona {
 
 function parseChapterMeta(raw: Record<string, unknown>): ChapterSummary {
   return {
-    n: (raw.chapter_n as number) ?? 0,
+    n: (raw.chapter_n as number) ?? (raw.chapter as number) ?? 0,
     title: (raw.title as string) ?? "",
     tags: (raw.tags as string[]) ?? [],
     oneLineSummary: (raw.one_line_summary as string) ?? "",

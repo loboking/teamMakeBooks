@@ -19,6 +19,26 @@ def build_persona_block(persona) -> str:
     )
 
 
+def _compress_characters(characters_text: str) -> str:
+    """characters.md를 한 줄 요약으로 압축 — 본문에 캐릭터 소개 반복 방지."""
+    lines = [l.strip() for l in characters_text.strip().splitlines() if l.strip()]
+    compressed = []
+    for line in lines:
+        # 헤딩(#, ##)은 이름만 추출
+        if line.startswith("#"):
+            compressed.append(line)
+        # 이미 한 줄인 항목은 그대로
+        elif len(line) < 80 and ":" in line:
+            compressed.append(line)
+        # 긴 설명은 첫 문장만
+        elif line and not line.startswith("-") and not line.startswith("*"):
+            first_sentence = line.split(".")[0].split("。")[0]
+            compressed.append(first_sentence + ("." if not first_sentence.endswith("。") else ""))
+    # 빈 줄 제거, 2줄 이상 유지
+    result = "\n".join(l for l in compressed if l)
+    return result if len(result) < 500 else characters_text[:500] + "\n... (생략)"
+
+
 def build_context_block(ctx) -> str:
     summary_block = ""
     if ctx.recent_summaries:
@@ -29,10 +49,12 @@ def build_context_block(ctx) -> str:
     theme_block = f"\n[작품 테마/약속 — 절대 어기지 말 것]\n{ctx.theme.strip()}\n" if ctx.theme else ""
     naming_block = f"\n[호칭표 — 인물 호칭은 반드시 이 표대로]\n{ctx.naming_table.strip()}\n" if ctx.naming_table else ""
 
+    characters_compressed = _compress_characters(ctx.characters)
+
     return (
-        f"[세계관]\n{ctx.world_bible.strip()}\n\n"
-        f"[등장인물]\n{ctx.characters.strip()}\n\n"
-        f"[작품 전체 플롯]\n{ctx.plot_outline.strip()}\n"
+        f"[세계관 요약]\n{ctx.world_bible.strip()[:300]}\n\n"
+        f"[등장인물 요약 — 본문에 인물 소개/등급/직업 묘사 반복 금지]\n{characters_compressed}\n\n"
+        f"[작품 전체 플롯]\n{ctx.plot_outline.strip()[:500]}\n"
         f"{theme_block}"
         f"{naming_block}"
         f"{summary_block}"
@@ -127,7 +149,16 @@ def build_beat_prompt(persona, ctx, beat, prev_tail: str, beat_index: int, total
         f"    예: 박세린이 강이준에게 말하는 대사는 호칭표대로 \"이준 씨, …\" 형태로 시작 (회차에 박세린 대사가 있다면 최소 1회).\n"
         f"  · **서술 문장에서 \"X는 Y를 'Z'라 불렀다\" 같은 메타 호칭 묘사는 쓰지 마라**. 호칭은 대사로 직접 보여줘라. 메타 묘사를 쓰면 대사의 호칭과 일치시켜야 하므로 부담만 늘어난다.\n"
         f"- 본문만 출력. 해설·메타 코멘트 금지.\n"
-        f"- 분량 1,800자 이상."
+        f"- 분량 1,800자 이상.\n"
+        f"\n"
+        f"### 캐릭터 소개 반복 절대 금지 (매우 중요)\n"
+        f"- 독자는 이미 인물을 알고 있다. 'F급 헌터', 'B급 어세신', 'S급', '짐꾼' 같은 등급·직업 설명을 본문에 다시 쓰지 마라.\n"
+        f"- 인물의 능력·과거·외모·특성을 서술로 설명하는 것 금지. 행동과 대사로만 보여줘라.\n"
+        f"- ❌ '그는 F급 헌터였다. 5년간 짐꾼으로 살았다.' (이미 독자가 아는 정보 재설명)\n"
+        f"- ✅ '이준은 던전 입구에서 짐을 내려놓았다.' (행동만으로 충분, 등급 묘사 불필요)\n"
+        f"- ❌ '박세린은 B급 어세신으로 빠른 검술을 자랑했다.' (직업 설명 반복)\n"
+        f"- ✅ '세린의 단검이 번뜩였다. 손목이 움직이기도 전에 검격이 날아왔다.' (능력을 행동으로 보여줌)\n"
+        f"- 이 룰을 어기면 즉시 불합격."
     )
 
 

@@ -93,6 +93,46 @@ def _dedup_actions(text: str) -> tuple[str, int]:
     return text, total_replaced
 
 
+def _dedup_consec_subjects(text: str) -> tuple[str, int]:
+    """한 줄/단락 내 '이준[은는이가을를의]'가 3번 이상 나오면 3번째부터 대명사."""
+    total = 0
+    pronoun_map = {
+        '이준은': '그는', '이준는': '그는',
+        '이준이': '그가', '이준가': '그가',
+        '이준을': '그를', '이준를': '그를',
+        '이준의': '그의',
+    }
+    ij_re = re.compile(r'이준([은는이가을를의])')
+
+    lines = text.split('\n')
+    new_lines = []
+
+    for line in lines:
+        stripped = line.strip()
+        # 대사, 시스템 메시지, 제목은 스킵
+        if (not stripped or stripped.startswith('#') or stripped.startswith('[')
+                or stripped.startswith('"') or ':' in stripped[:15]):
+            new_lines.append(line)
+            continue
+
+        matches = list(ij_re.finditer(line))
+        if len(matches) < 3:
+            new_lines.append(line)
+            continue
+
+        # 3번째 이후부터 대명사 치환 (뒤에서부터)
+        for idx in range(len(matches) - 1, 1, -1):  # 마지막→2번째
+            m = matches[idx]
+            key = '이준' + m.group(1)
+            pronoun = pronoun_map.get(key, '그는')
+            line = line[:m.start()] + pronoun + line[m.end():]
+            total += 1
+
+        new_lines.append(line)
+
+    return '\n'.join(new_lines), total
+
+
 def _polish_regex(chapter_path: Path) -> tuple[bool, int]:
     """정규식 기반 반복 제거."""
     text = chapter_path.read_text(encoding='utf-8')
@@ -113,12 +153,17 @@ def _polish_regex(chapter_path: Path) -> tuple[bool, int]:
         return False, 0
 
     body, action_count = _dedup_actions(body)
-    if action_count == 0:
+
+    # 2) 연속 주어 반복 제거
+    body, subject_count = _dedup_consec_subjects(body)
+
+    total = action_count + subject_count
+    if total == 0:
         return False, 0
 
     new_text = '\n'.join(header_lines) + '\n' + body + '\n'
     chapter_path.write_text(new_text, encoding='utf-8')
-    return True, action_count
+    return True, total
 
 
 # ── LLM 기반 정제 ──────────────────────────────────────────────────
@@ -185,7 +230,7 @@ def _polish_llm(chapter_path: Path) -> bool:
         )
         resp.raise_for_status()
         result = resp.json().get('response', '').strip()
-        if not result or len(result) < len(chunk) * 0.4:
+        if not result or len(result) < len(chunk) * 0.3:
             print('too short, keep original')
             polished_parts.append(chunk)
         else:
@@ -193,7 +238,7 @@ def _polish_llm(chapter_path: Path) -> bool:
             polished_parts.append(result)
 
     polished = '\n\n'.join(polished_parts)
-    if len(polished) < len(body) * 0.5:
+    if len(polished) < len(body) * 0.4:
         print(f'  SKIP: output too short ({len(polished)} vs {len(body)})')
         return False
 

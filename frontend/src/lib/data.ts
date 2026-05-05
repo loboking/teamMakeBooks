@@ -75,11 +75,13 @@ function parseAuthor(authorId: string): AuthorPersona {
 }
 
 function parseChapterMeta(raw: Record<string, unknown>): ChapterSummary {
+  const keyEvents = raw.key_events as string[] | undefined;
+  const fallback = keyEvents?.length ? keyEvents.join(", ") : "";
   return {
     n: (raw.chapter_n as number) ?? (raw.chapter as number) ?? 0,
     title: (raw.title as string) ?? "",
     tags: (raw.tags as string[]) ?? [],
-    oneLineSummary: (raw.one_line_summary as string) ?? "",
+    oneLineSummary: (raw.one_line_summary as string) ?? fallback,
     publishedAt: (raw.published_at as string) ?? "",
   };
 }

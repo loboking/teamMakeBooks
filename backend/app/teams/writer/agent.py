@@ -8,6 +8,7 @@ from ...utils.logger import log_call
 from .prompts import (
     build_beat_prompt,
     build_polish_prompt,
+    build_rep_polish_prompt,
     build_revise_prompt,
     build_summary_prompt,
 )
@@ -93,6 +94,26 @@ class WriterAgent:
                 role="polish_flow",
                 work_id=work_id,
                 chapter_n=ctx.current_chapter_n,
+                prompt=prompt,
+                response=resp,
+                logs_dir=self.logs_dir,
+            )
+        return resp.text.strip()
+
+    def polish_repetition(self, draft: str, feedback: str, work_id: str) -> str:
+        """반복 패턴만 집중 교체. 본문 전체 재작성 X."""
+        prompt = build_rep_polish_prompt(draft, feedback)
+        resp = self.provider.complete(
+            prompt,
+            max_tokens=max(self.beat_num_predict * 3, 8000),
+            temperature=0.3,
+        )
+        if self.logs_dir:
+            log_call(
+                team="writer",
+                role="polish_repetition",
+                work_id=work_id,
+                chapter_n=0,
                 prompt=prompt,
                 response=resp,
                 logs_dir=self.logs_dir,

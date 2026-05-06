@@ -1,6 +1,8 @@
 """검수자 프롬프트 v2 — 호칭/시간점프/반복 검출 추가."""
 from __future__ import annotations
 
+import re
+
 REVIEWER_DEFS: dict[str, dict[str, str]] = {
     "direction": {
         "name": "방향성 검수자",
@@ -226,7 +228,114 @@ REVIEWER_DEFS: dict[str, dict[str, str]] = {
 판단: 평균 문장 길이 8자로 한국 웹소설 표준(25~40자) 대폭 미달. 모든 의미 연결을 마침표로 끊어 호흡 깨짐.
 출력: {"판정":"반려","점수":2,"이유":"평균 문장 길이 8자로 단편 나열. '그랬다·길었다·익숙했다·무거웠다' 같은 단문이 연속되어 글이 잘게 끊어짐","수정가이드":"한 호흡으로 묶기. 예: '5년 째 같은 짐을 끌고 있는 그에게 어깨를 짓누르는 무게는 이미 익숙했지만, 멈출 수는 없었다. 가족이 있었기 때문이다.' 단문은 임팩트 1방으로만"}""",
     },
+    "repetition": {
+        "name": "반복 패턴 검수자",
+        "instruction": """사전 카운트 결과를 기반으로 반복 위반 여부를 판정한다.
+창의적 평론·문장력·흡입력·서사 평가는 절대 금지. 카운트와 한계 비교만 한다.
+
+[판정 기준 — 하나라도 초과하면 반려]
+1. 서술 '이준' > 15회 → 반려
+2. 서술 '강이준' > 5회 → 반려
+3. 동일 행동 동사 > 3회/동사 → 반려
+4. 같은 주어로 3문장+ 연속 시작 → 반려
+5. 캐릭터 등급/직업 묘사 > 2회/인물 → 반려
+
+[반려 시 수정가이드 규칙]
+- 초과 항목과 줄여야 할 횟수를 명시
+- 대체 표현 제시 (예: 바라보았다→응시했다/시선을 주었다/주목했다)
+- '이준' 초과 시: 대명사(그는/그가) 또는 주어 생략으로 교체 안내
+
+[학습 예시 1 — 통과]
+사전 카운트에 ⚠️ 없음
+출력: {"판정":"통과","점수":9,"이유":"모든 반복 패턴 한계 이내","수정가이드":""}
+
+[학습 예시 2 — 반려 (이준 초과)]
+사전 카운트: 서술 '이준' 21회 ⚠️
+출력: {"판정":"반려","점수":3,"이유":"서술 이준 21회(한계15 초과)","수정가이드":"이준 6회 이상을 그는/그가/주어생략으로 교체"}
+
+[학습 예시 3 — 반려 (동작동사 초과)]
+사전 카운트: '바라보았다' 4회 ⚠️
+출력: {"판정":"반려","점수":4,"이유":"바라보았다 4회(한계3 초과)","수정가이드":"바라보았다 1회 이상을 응시했다/시선을 주었다/주목했다로 교체"}""",
+    },
 }
+
+def _extract_narrative(draft: str) -> str:
+    """대사·시스템 메시지·헤더 제외한 서술 텍스트 추출."""
+    text = draft
+    text = re.sub(r'"[^"]*"', '', text)        # 곧은 따옴표 대사 제거
+    text = re.sub(r'“[^”]*”', '', text)  # 곱따옴표 대사 제거
+    text = re.sub(r'\[.*?\]', '', text)         # 시스템 메시지 제거
+    lines = text.split('\n')
+    narrative = []
+    for line in lines:
+        s = line.strip()
+        if not s or s.startswith('#') or s.startswith('>') or s.startswith('---'):
+            continue
+        narrative.append(s)
+    return '\n'.join(narrative)
+
+
+_ACTION_VERBS = [
+    '바라보았다', '확인했다', '끄덕였다', '미세하게', '입을 열었다',
+    '발동했다', '눈을 감았다', '손을 뻗었다', '분석했다', '눈을 떴다',
+    '주먹을 쥐었다', '깊이 숨을', '고개를 돌렸다',
+]
+
+_GRADE_KEYWORDS = ['F급', 'D급', 'C급', 'B급', 'A급', 'S급']
+
+
+def _count_repetition_patterns(draft: str) -> dict:
+    """서술 텍스트에서 반복 패턴 regex 카운트."""
+    narrative = _extract_narrative(draft)
+    counts: dict = {}
+
+    counts['이준'] = len(re.findall(r'이준', narrative))
+    counts['강이준'] = len(re.findall(r'강이준', narrative))
+
+    verbs = {}
+    for verb in _ACTION_VERBS:
+        c = len(re.findall(re.escape(verb), narrative))
+        if c > 0:
+            verbs[verb] = c
+    counts['동작동사'] = verbs
+
+    # 연속 주어 패턴
+    max_consec = 0
+    cur = 0
+    for line in narrative.split('\n'):
+        if re.match(r'(이준|그|강이준)[은는이가을를의]', line.lstrip()):
+            cur += 1
+            if cur > max_consec:
+                max_consec = cur
+        else:
+            cur = 0
+    counts['연속주어'] = max_consec
+
+    grades = {}
+    for kw in _GRADE_KEYWORDS:
+        c = len(re.findall(re.escape(kw), narrative))
+        if c > 0:
+            grades[kw] = c
+    counts['등급직업'] = grades
+
+    return counts
+
+
+def _format_count_report(counts: dict) -> str:
+    """카운트 결과를 프롬프트용으로 포맷."""
+    lines = []
+    ij = counts['이준']
+    lines.append(f"서술 '이준': {ij}회 (한계 15) {'⚠️ 초과' if ij > 15 else '✓'}")
+    kj = counts['강이준']
+    lines.append(f"서술 '강이준': {kj}회 (한계 5) {'⚠️ 초과' if kj > 5 else '✓'}")
+    for verb, c in sorted(counts.get('동작동사', {}).items(), key=lambda x: -x[1]):
+        lines.append(f"'{verb}': {c}회 (한계 3) {'⚠️ 초과' if c > 3 else '✓'}")
+    cs = counts['연속주어']
+    lines.append(f"연속 주어 최대: {cs}문장 (한계 2) {'⚠️ 초과' if cs > 2 else '✓'}")
+    for kw, c in sorted(counts.get('등급직업', {}).items(), key=lambda x: -x[1]):
+        lines.append(f"'{kw}': {c}회 (한계 2) {'⚠️ 초과' if c > 2 else '✓'}")
+    return '\n'.join(lines)
+
 
 REVIEW_SCHEMA: dict = {
     "type": "object",
@@ -274,11 +383,24 @@ def build_reviewer_prompt(role: str, ctx, draft: str) -> str:
             "- 장면 전환은 자연스럽게 (시간/공간 점프 금지)\n\n"
             f"[현재 회차({ctx.current_chapter_n}화) 의도]\n{chapter_intent}\n\n"
         )
+    elif role == "repetition":
+        counts = _count_repetition_patterns(draft)
+        context_block = (
+            f"[사전 카운트 결과 — 정규식 추출 (서술 텍스트만)]\n"
+            f"{_format_count_report(counts)}\n\n"
+        )
     else:
         context_block = ""
 
     role_reminder = ""
-    if role == "character":
+    if role == "repetition":
+        role_reminder = (
+            "[최종 리마인더 — 반드시 이 형식만 출력. 다른 텍스트 절대 금지.]\n"
+            '출력 예시 (통과): {"판정":"통과","점수":9,"이유":"모든 반복 패턴 한계 이내","수정가이드":""}\n'
+            '출력 예시 (반려): {"판정":"반려","점수":3,"이유":"서술 이준 21회(한계15 초과)","수정가이드":"이준 6회 이상을 그는/그가로 교체"}\n'
+            '키 이름은 반드시 "판정","점수","이유","수정가이드"를 사용. "결과" 등 다른 키 사용 금지.\n\n'
+        )
+    elif role == "character":
         role_reminder = (
             "[최종 리마인더 — 본문 읽은 직후 반드시 이 순서로 자문 후 판정]\n"
             "Q1. 본문 첫 단락의 강이준 등급/직업 표기를 따옴표로 인용하라.\n"

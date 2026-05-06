@@ -11,6 +11,8 @@ teams:
       model: "ollama:gemma4:e2b"
     quality:
       model: "ollama:gemma4:e2b"
+    repetition:
+      model: "ollama:gemma4:e2b"
   publisher:
     model: "ollama:gemma4:e2b"
 

@@ -1,4 +1,4 @@
-"""LangGraph 기반 오케스트레이터 그래프 — writer → naming → reviewer×3 → publisher."""
+"""LangGraph 기반 오케스트레이터 그래프 — writer → naming → reviewer×4 → publisher."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -14,11 +14,12 @@ from ..providers import get_provider
 from ..teams.publisher import PublishResult, PublisherAgent
 from ..teams.reviewer import ReviewerAgent, ReviewResult
 from ..teams.reviewer.naming_checker import run_naming_check
+from ..teams.reviewer.prompts import _count_repetition_patterns
 from ..teams.writer import WriterAgent
 from ..utils.alert import send_alert
 from ..utils.logger import log_call, log_review_event
 
-REVIEWER_ROLES: list[str] = ["direction", "character", "quality"]
+REVIEWER_ROLES: list[str] = ["direction", "character", "quality", "repetition"]
 
 # ── State ─────────────────────────────────────────────────────────────────────
 
@@ -240,6 +241,111 @@ def _make_reviewer_node(role: str):
     return _reviewer_node
 
 
+def _repetition_review_node(state: PipelineState) -> dict:
+    """전용 반복 검수 노드 — regex pre-count + LLM 판정 + polish_repetition 수정."""
+    settings: Settings = state["settings"]
+    draft = state["draft"]
+    work_id = state["work_id"]
+    retry_counts = dict(state["retry_counts"])
+    review_history = list(state["review_history"])
+
+    attempt = retry_counts.get("repetition", 0) + 1
+    retry_counts["repetition"] = attempt
+
+    # regex pre-count — 모두 한계 이내이면 LLM 없이 즉시 통과
+    counts = _count_repetition_patterns(draft)
+    all_ok = (
+        counts['이준'] <= 20
+        and counts['강이준'] <= 5
+        and all(c <= 3 for c in counts.get('동작동사', {}).values())
+        and counts['연속주어'] <= 3
+        and all(c <= 2 for c in counts.get('등급직업', {}).values())
+    )
+    if all_ok:
+        print(f"[reviewer:repetition] 시도 {attempt} — regex 전체 통과 (LLM 생략)")
+        review_history.append({
+            "role": "repetition", "attempt": attempt, "passed": True,
+            "score": 9, "reason": "regex pre-count 모두 한계 이내",
+            "feedback": "", "parse_error": None,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+        return {
+            "retry_counts": retry_counts,
+            "review_history": review_history,
+            "current_stage": "publisher",
+        }
+
+    # LLM 판정
+    from ..teams.reviewer.prompts import build_reviewer_prompt
+
+    print(f"[reviewer:repetition] 시도 {attempt}/{settings.max_retries}")
+    reviewer_model = settings.model_key("reviewer", "repetition")
+    reviewer = ReviewerAgent(
+        "repetition",
+        get_provider(reviewer_model, settings),
+        temperature=float(settings.config.get("reviewer", {}).get("temperature", 0.2)),
+        num_predict=int(settings.config.get("reviewer", {}).get("num_predict", 600)),
+        logs_dir=settings.logs_dir,
+    )
+
+    # 빈 ctx 대신 최소 컨텍스트 생성 (repetition은 ctx가 필요없지만 시그니처 요구)
+    class _FakeCtx:
+        current_chapter_n = state["chapter_n"]
+        theme = ""
+        naming_table = ""
+        characters = ""
+        plot_outline = ""
+        chapter_outline = type('CO', (), {'overall': property(lambda self: '')})()
+    result: ReviewResult = reviewer.review(draft, _FakeCtx(), attempt, work_id)
+
+    review_history.append({
+        "role": result.role, "attempt": result.attempt, "passed": result.passed,
+        "score": result.score, "reason": result.reason,
+        "feedback": result.feedback if not result.passed else "",
+        "parse_error": result.parse_error,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+
+    if result.passed:
+        print(f"[reviewer:repetition] 통과 (점수 {result.score})")
+        return {
+            "retry_counts": retry_counts,
+            "review_history": review_history,
+            "current_stage": "publisher",
+        }
+
+    if attempt >= settings.max_retries:
+        msg = (
+            f"[ALERT] {work_id} ch{state['chapter_n']:03d} repetition 검수 "
+            f"{settings.max_retries}회 소진.\n사유: {result.reason}\n가이드: {result.feedback}"
+        )
+        print(msg)
+        return {
+            "retry_counts": retry_counts,
+            "review_history": review_history,
+            "failure_stage": "repetition",
+            "failure_reason": result.feedback,
+            "current_stage": "__halt__",
+        }
+
+    # 전용 반복 정제 (revise 대신 polish_repetition 사용)
+    print(f"[writer] 반복 정제 (사유: {result.reason})")
+    writer_model = state["persona"].model_override or settings.model_key("writer")
+    writer = WriterAgent(
+        get_provider(writer_model, settings),
+        beat_temperature=float(settings.config.get("writer", {}).get("beat_temperature", 0.85)),
+        beat_num_predict=int(settings.config.get("writer", {}).get("beat_num_predict", 4000)),
+        logs_dir=settings.logs_dir,
+    )
+    new_draft = writer.polish_repetition(draft, result.feedback, work_id)
+    return {
+        "draft": new_draft,
+        "retry_counts": retry_counts,
+        "review_history": review_history,
+        "current_stage": "repetition",
+    }
+
+
 def _polish_node(state: PipelineState) -> dict:
     """단문을 어미 연결로 묶어 호흡 정제. 의미·이름·플롯 변경 금지."""
     settings: Settings = state["settings"]
@@ -410,12 +516,21 @@ def _route_after_character(state: PipelineState) -> Literal["reviewer_character"
     return "reviewer_quality"
 
 
-def _route_after_quality(state: PipelineState) -> Literal["reviewer_quality", "publisher", "alert_and_halt"]:
+def _route_after_quality(state: PipelineState) -> Literal["reviewer_quality", "reviewer_repetition", "alert_and_halt"]:
     stage = state["current_stage"]
     if stage == "__halt__":
         return "alert_and_halt"
     if stage == "quality":
         return "reviewer_quality"
+    return "reviewer_repetition"
+
+
+def _route_after_repetition(state: PipelineState) -> Literal["reviewer_repetition", "publisher", "alert_and_halt"]:
+    stage = state["current_stage"]
+    if stage == "__halt__":
+        return "alert_and_halt"
+    if stage == "repetition":
+        return "reviewer_repetition"
     return "publisher"
 
 
@@ -431,6 +546,7 @@ def _build_graph() -> StateGraph:
     g.add_node("reviewer_direction", _make_reviewer_node("direction"))
     g.add_node("reviewer_character", _make_reviewer_node("character"))
     g.add_node("reviewer_quality", _make_reviewer_node("quality"))
+    g.add_node("reviewer_repetition", _repetition_review_node)
     g.add_node("polish_flow", _polish_node)
     g.add_node("publisher", _publisher_node)
     g.add_node("writer_summary", _writer_summary)
@@ -461,6 +577,11 @@ def _build_graph() -> StateGraph:
     })
     g.add_conditional_edges("reviewer_quality", _route_after_quality, {
         "reviewer_quality": "reviewer_quality",
+        "reviewer_repetition": "reviewer_repetition",
+        "alert_and_halt": "alert_and_halt",
+    })
+    g.add_conditional_edges("reviewer_repetition", _route_after_repetition, {
+        "reviewer_repetition": "reviewer_repetition",
         "publisher": "polish_flow",
         "alert_and_halt": "alert_and_halt",
     })

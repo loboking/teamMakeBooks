@@ -255,10 +255,10 @@ def _repetition_review_node(state: PipelineState) -> dict:
     # regex pre-count — 모두 한계 이내이면 LLM 없이 즉시 통과
     counts = _count_repetition_patterns(draft)
     all_ok = (
-        counts['이준'] <= 20
+        counts['이준'] <= 25
         and counts['강이준'] <= 5
         and all(c <= 3 for c in counts.get('동작동사', {}).values())
-        and counts['연속주어'] <= 3
+        and counts['연속주어'] <= 4
         and all(c <= 2 for c in counts.get('등급직업', {}).values())
     )
     if all_ok:
@@ -278,7 +278,8 @@ def _repetition_review_node(state: PipelineState) -> dict:
     # LLM 판정
     from ..teams.reviewer.prompts import build_reviewer_prompt
 
-    print(f"[reviewer:repetition] 시도 {attempt}/{settings.max_retries}")
+    rep_max = int(settings.config.get("reviewer", {}).get("repetition_max_retries", 5))
+    print(f"[reviewer:repetition] 시도 {attempt}/{rep_max}")
     reviewer_model = settings.model_key("reviewer", "repetition")
     reviewer = ReviewerAgent(
         "repetition",
@@ -314,10 +315,10 @@ def _repetition_review_node(state: PipelineState) -> dict:
             "current_stage": "publisher",
         }
 
-    if attempt >= settings.max_retries:
+    if attempt >= rep_max:
         msg = (
             f"[ALERT] {work_id} ch{state['chapter_n']:03d} repetition 검수 "
-            f"{settings.max_retries}회 소진.\n사유: {result.reason}\n가이드: {result.feedback}"
+            f"{rep_max}회 소진.\n사유: {result.reason}\n가이드: {result.feedback}"
         )
         print(msg)
         return {

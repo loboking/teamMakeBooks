@@ -14,7 +14,7 @@ from ..providers import get_provider
 from ..teams.publisher import PublishResult, PublisherAgent
 from ..teams.reviewer import ReviewerAgent, ReviewResult
 from ..teams.reviewer.naming_checker import run_naming_check
-from ..teams.reviewer.prompts import _count_repetition_patterns
+from ..teams.reviewer.prompts import _count_repetition_patterns, _format_count_report
 from ..teams.writer import WriterAgent
 from ..utils.alert import send_alert
 from ..utils.logger import log_call, log_review_event
@@ -256,9 +256,9 @@ def _repetition_review_node(state: PipelineState) -> dict:
     counts = _count_repetition_patterns(draft)
     all_ok = (
         counts['이준'] <= 25
-        and counts['강이준'] <= 5
+        and counts['강이준'] <= 7
         and all(c <= 3 for c in counts.get('동작동사', {}).values())
-        and counts['연속주어'] <= 4
+        and counts['연속주어'] <= 6
         and all(c <= 2 for c in counts.get('등급직업', {}).values())
     )
     if all_ok:
@@ -308,7 +308,48 @@ def _repetition_review_node(state: PipelineState) -> dict:
     })
 
     if result.passed:
-        print(f"[reviewer:repetition] 통과 (점수 {result.score})")
+        # LLM 통과 시에도 regex 최종 검증 — LLM이 관대하게 통과시키는 경우 방지
+        final_counts = _count_repetition_patterns(draft)
+        still_bad = (
+            final_counts['이준'] > 25
+            or final_counts['강이준'] > 7
+            or final_counts['연속주어'] > 6
+            or any(c > 3 for c in final_counts.get('동작동사', {}).values())
+            or any(c > 2 for c in final_counts.get('등급직업', {}).values())
+        )
+        if still_bad:
+            print(f"[reviewer:repetition] LLM 통과했으나 regex 재검증 실패 — 이준={final_counts['이준']}, 강이준={final_counts['강이준']}")
+            # LLM 통과를 무시하고 polish 재시도
+            if attempt >= rep_max:
+                msg = f"[ALERT] {work_id} ch{state['chapter_n']:03d} repetition 검수 {rep_max}회 소진 (regex 최종검증 불합격).\n이준={final_counts['이준']}, 강이준={final_counts['강이준']}"
+                print(msg)
+                return {
+                    "retry_counts": retry_counts,
+                    "review_history": review_history,
+                    "failure_stage": "repetition",
+                    "failure_reason": f"regex final: 이준={final_counts['이준']}, 강이준={final_counts['강이준']}",
+                    "current_stage": "__halt__",
+                }
+            # polish 재시도 — feedback에 regex 카운트 주입
+            counts_report = _format_count_report(final_counts)
+            polish_feedback = f"여전히 초과됨:\n{counts_report}\n더 적극적으로 제거하세요."
+            _persona = state["persona"]
+            _wm = _persona.model_override or settings.model_key("writer")
+            _w = WriterAgent(
+                get_provider(_wm, settings),
+                beat_temperature=float(settings.config.get("writer", {}).get("beat_temperature", 0.85)),
+                beat_num_predict=int(settings.config.get("writer", {}).get("beat_num_predict", 4000)),
+                logs_dir=settings.logs_dir,
+            )
+            _w.polish_repetition(draft, polish_feedback, work_id)
+            review_history[-1]["passed"] = False
+            review_history[-1]["reason"] += f" (regex 재검증: 이준={final_counts['이준']})"
+            return {
+                "retry_counts": retry_counts,
+                "review_history": review_history,
+                "current_stage": "reviewer_repetition",
+            }
+        print(f"[reviewer:repetition] 통과 (점수 {result.score}) — regex 최종 검증 OK")
         return {
             "retry_counts": retry_counts,
             "review_history": review_history,

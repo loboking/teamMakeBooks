@@ -327,11 +327,11 @@ def _format_count_report(counts: dict) -> str:
     ij = counts['이준']
     lines.append(f"서술 '이준': {ij}회 (한계 15) {'⚠️ 초과' if ij > 15 else '✓'}")
     kj = counts['강이준']
-    lines.append(f"서술 '강이준': {kj}회 (한계 5) {'⚠️ 초과' if kj > 5 else '✓'}")
+    lines.append(f"서술 '강이준': {kj}회 (한계 7) {'⚠️ 초과' if kj > 7 else '✓'}")
     for verb, c in sorted(counts.get('동작동사', {}).items(), key=lambda x: -x[1]):
         lines.append(f"'{verb}': {c}회 (한계 3) {'⚠️ 초과' if c > 3 else '✓'}")
     cs = counts['연속주어']
-    lines.append(f"연속 주어 최대: {cs}문장 (한계 2) {'⚠️ 초과' if cs > 2 else '✓'}")
+    lines.append(f"연속 주어 최대: {cs}문장 (한계 6) {'⚠️ 초과' if cs > 6 else '✓'}")
     for kw, c in sorted(counts.get('등급직업', {}).items(), key=lambda x: -x[1]):
         lines.append(f"'{kw}': {c}회 (한계 2) {'⚠️ 초과' if c > 2 else '✓'}")
     return '\n'.join(lines)

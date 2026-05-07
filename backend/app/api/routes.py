@@ -123,6 +123,8 @@ def list_works():
             "total_chapters": total,
             "published_chapters": meta.get("published_chapters", 0),
         })
+    # 발행 화수 많은 작품이 위로 (메인 작품 우선)
+    works.sort(key=lambda w: (-w["published_chapters"], w["work_id"]))
     return {"works": works}
 
 
@@ -432,31 +434,129 @@ def get_pipeline_status(work_id: str):
     return {"tasks": tasks}
 
 
-# ── 스케줄 (임시 구현) ───────────────────────────────────────────────────────────
+# ── 스케줄 ───────────────────────────────────────────────────────────────────────
 
 
 @router.get("/works/{work_id}/schedule")
 def get_schedule(work_id: str):
-    """스케줄 상태 (TODO: 실제 스케줄러 구현 필요)."""
-    return {"work_id": work_id, "enabled": False, "daily_count": 0, "paused": True}
+    """현재 스케줄 + 다음 자동 실행 시각 (KST)."""
+    from dataclasses import asdict
+
+    from ..scheduler import compute_next_run, get_next_chapter_n, load_schedule
+
+    settings = load_settings()
+    work_dir = _get_work_dir(work_id, settings)  # 존재 검증
+    sch = load_schedule(work_id, settings.novels_dir)
+    next_run = compute_next_run(sch)
+    next_n = get_next_chapter_n(work_id, settings.novels_dir)
+    return {
+        "work_id": work_id,
+        "schedule": asdict(sch),
+        "next_run_at": next_run.isoformat() if next_run else None,
+        "next_chapter_n": next_n,
+    }
 
 
-@router.post("/works/{work_id}/schedule")
-def set_schedule(work_id: str, daily_count: int, start_chapter: int):
-    """스케줄 설정 (TODO: 실제 스케줄러 구현 필요)."""
-    return {"status": "ok", "message": "Schedule not implemented yet"}
+@router.put("/works/{work_id}/schedule")
+def set_schedule(
+    work_id: str,
+    enabled: bool = True,
+    frequency: str = "daily",
+    hour: int = 9,
+    minute: int = 0,
+    batch_size: int = 1,
+):
+    """스케줄 변경. frequency: daily | hourly | weekly | manual."""
+    from dataclasses import asdict
+
+    from ..scheduler import Schedule, compute_next_run, load_schedule, save_schedule
+
+    if frequency not in ("daily", "hourly", "weekly", "manual"):
+        raise HTTPException(status_code=400, detail=f"Invalid frequency: {frequency}")
+    if not (0 <= hour <= 23) or not (0 <= minute <= 59):
+        raise HTTPException(status_code=400, detail="hour 0~23, minute 0~59")
+    if not (1 <= batch_size <= 20):
+        raise HTTPException(status_code=400, detail="batch_size 1~20")
+
+    settings = load_settings()
+    _ = _get_work_dir(work_id, settings)
+    cur = load_schedule(work_id, settings.novels_dir)
+    new_sch = Schedule(
+        enabled=enabled,
+        frequency=frequency,  # type: ignore
+        hour=hour, minute=minute, batch_size=batch_size,
+        paused=cur.paused,
+        last_run_at=cur.last_run_at,
+        last_published_n=cur.last_published_n,
+        last_status=cur.last_status,
+        last_error=cur.last_error,
+    )
+    save_schedule(work_id, settings.novels_dir, new_sch)
+    next_run = compute_next_run(new_sch)
+    return {
+        "status": "ok",
+        "schedule": asdict(new_sch),
+        "next_run_at": next_run.isoformat() if next_run else None,
+    }
 
 
 @router.post("/works/{work_id}/schedule/pause")
 def pause_schedule(work_id: str):
-    """일시정지 (TODO)."""
-    return {"status": "ok"}
+    from ..scheduler import load_schedule, save_schedule
+
+    settings = load_settings()
+    _ = _get_work_dir(work_id, settings)
+    sch = load_schedule(work_id, settings.novels_dir)
+    sch.paused = True
+    save_schedule(work_id, settings.novels_dir, sch)
+    return {"status": "ok", "paused": True}
 
 
 @router.post("/works/{work_id}/schedule/resume")
 def resume_schedule(work_id: str):
-    """재개 (TODO)."""
-    return {"status": "ok"}
+    from ..scheduler import load_schedule, save_schedule
+
+    settings = load_settings()
+    _ = _get_work_dir(work_id, settings)
+    sch = load_schedule(work_id, settings.novels_dir)
+    sch.paused = False
+    save_schedule(work_id, settings.novels_dir, sch)
+    return {"status": "ok", "paused": False}
+
+
+@router.post("/works/{work_id}/schedule/run-now")
+def run_schedule_now(work_id: str, background_tasks: BackgroundTasks, batch_size: int = 0):
+    """즉시 실행 — 현재 batch_size(또는 인자) 만큼 회차 발행을 background로 트리거."""
+    from ..scheduler import get_next_chapter_n, load_schedule
+
+    settings = load_settings()
+    _ = _get_work_dir(work_id, settings)
+    sch = load_schedule(work_id, settings.novels_dir)
+    n_chapters = batch_size if batch_size > 0 else sch.batch_size
+    start_n = get_next_chapter_n(work_id, settings.novels_dir)
+
+    task_id = f"{work_id}_schedule_run_{datetime.now(timezone.utc).strftime('%y%m%dT%H%M%S')}"
+    _background_tasks[task_id] = {
+        "work_id": work_id,
+        "kind": "schedule_run",
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "status": "running",
+        "from_chapter": start_n,
+        "to_chapter": start_n + n_chapters - 1,
+    }
+
+    def _runner():
+        try:
+            from ..orchestrator import run_chapter_pipeline
+            for n in range(start_n, start_n + n_chapters):
+                run_chapter_pipeline(work_id=work_id, chapter_n=n, settings=settings)
+            _background_tasks[task_id]["status"] = "ok"
+        except Exception as e:
+            _background_tasks[task_id]["status"] = "failed"
+            _background_tasks[task_id]["error"] = str(e)
+
+    background_tasks.add_task(_runner)
+    return {"task_id": task_id, "from_chapter": start_n, "to_chapter": start_n + n_chapters - 1}
 
 
 # ── 모델 ───────────────────────────────────────────────────────────────────────

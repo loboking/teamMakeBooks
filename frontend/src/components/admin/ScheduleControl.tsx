@@ -1,205 +1,235 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 
-type ScheduleState = {
-  is_running: boolean;
-  start_chapter: number;
-  end_chapter: number;
-  daily_quota: number;
-  current_chapter?: number;
+type Schedule = {
+  enabled: boolean;
+  frequency: "daily" | "hourly" | "weekly" | "manual";
+  hour: number;
+  minute: number;
+  batch_size: number;
+  paused: boolean;
+  last_run_at: string;
+  last_published_n: number;
+  last_status: string;
+  last_error: string;
 };
 
-type Props = {
-  workId: string;
+type ScheduleResponse = {
+  work_id: string;
+  schedule: Schedule;
+  next_run_at: string | null;
+  next_chapter_n: number;
 };
+
+type Props = { workId: string };
+
+const FREQUENCIES = [
+  { value: "daily", label: "매일" },
+  { value: "hourly", label: "매시간" },
+  { value: "weekly", label: "매주(월)" },
+  { value: "manual", label: "수동" },
+] as const;
+
+const BATCH_SIZES = [1, 3, 5, 10];
 
 export default function ScheduleControl({ workId }: Props) {
-  const [schedule, setSchedule] = useState<ScheduleState | null>(null);
+  const [data, setData] = useState<ScheduleResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [editMode, setEditMode] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const [startCh, setStartCh] = useState(1);
-  const [endCh, setEndCh] = useState(100);
-  const [dailyQuota, setDailyQuota] = useState(3);
-
-  useEffect(() => {
-    fetchSchedule();
-  }, []);
+  const [enabled, setEnabled] = useState(false);
+  const [frequency, setFrequency] = useState<Schedule["frequency"]>("daily");
+  const [hour, setHour] = useState(9);
+  const [minute, setMinute] = useState(0);
+  const [batchSize, setBatchSize] = useState(1);
 
   const fetchSchedule = async () => {
     try {
       const res = await fetch(`/api/works/${workId}/schedule`);
-      if (res.ok) {
-        const data = await res.json();
-        setSchedule(data);
-        setStartCh(data.start_chapter || 1);
-        setEndCh(data.end_chapter || 100);
-        setDailyQuota(data.daily_quota || 3);
-      }
-    } catch (e) {
-      console.error("Failed to fetch schedule:", e);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const d: ScheduleResponse = await res.json();
+      setData(d);
+      setEnabled(d.schedule.enabled);
+      setFrequency(d.schedule.frequency);
+      setHour(d.schedule.hour);
+      setMinute(d.schedule.minute);
+      setBatchSize(d.schedule.batch_size);
+      setError(null);
+    } catch (e: any) {
+      setError(`스케줄 로드 실패: ${e.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSave = async () => {
+  useEffect(() => {
+    if (workId) fetchSchedule();
+  }, [workId]);
+
+  const save = async () => {
     setSaving(true);
+    setError(null);
     try {
-      const res = await fetch(`/api/works/${workId}/schedule`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          start_chapter: startCh,
-          end_chapter: endCh,
-          daily_quota: dailyQuota,
-        }),
+      const params = new URLSearchParams({
+        enabled: String(enabled),
+        frequency,
+        hour: String(hour),
+        minute: String(minute),
+        batch_size: String(batchSize),
       });
-      if (res.ok) {
-        setSchedule(await res.json());
-        setEditMode(false);
-      }
-    } catch (e) {
-      console.error("Failed to save schedule:", e);
+      const res = await fetch(`/api/works/${workId}/schedule?${params}`, { method: "PUT" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await fetchSchedule();
+    } catch (e: any) {
+      setError(`저장 실패: ${e.message}`);
     } finally {
       setSaving(false);
     }
   };
 
-  const handleToggle = async () => {
-    if (!schedule) return;
+  const togglePause = async () => {
+    if (!data) return;
+    const action = data.schedule.paused ? "resume" : "pause";
     try {
-      const res = await fetch(`/api/works/${workId}/schedule/toggle`, {
-        method: "POST",
-      });
-      if (res.ok) {
-        setSchedule(await res.json());
-      }
-    } catch (e) {
-      console.error("Failed to toggle schedule:", e);
+      await fetch(`/api/works/${workId}/schedule/${action}`, { method: "POST" });
+      await fetchSchedule();
+    } catch (e: any) {
+      setError(`일시정지 토글 실패: ${e.message}`);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-6">
-        <p className="text-center text-[var(--text-muted)]">로딩 중...</p>
-      </div>
-    );
-  }
+  const runNow = async () => {
+    setRunning(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({ batch_size: String(batchSize) });
+      const res = await fetch(`/api/works/${workId}/schedule/run-now?${params}`, { method: "POST" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const j = await res.json();
+      alert(`즉시 실행 시작: ch${j.from_chapter}~ch${j.to_chapter}\ntask_id=${j.task_id}`);
+      await fetchSchedule();
+    } catch (e: any) {
+      setError(`즉시 실행 실패: ${e.message}`);
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  if (loading) return <div className="text-sm text-[var(--text-muted)]">로딩...</div>;
+  if (!data) return <div className="text-sm text-red-500">{error || "스케줄 데이터 없음"}</div>;
+
+  const sch = data.schedule;
+  const nextRun = data.next_run_at ? new Date(data.next_run_at).toLocaleString("ko-KR") : null;
 
   return (
-    <div className="space-y-6">
-      {/* Status */}
-      <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-[var(--text-primary)]">스케줄 상태</h3>
-          <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${
-            schedule?.is_running
-              ? "bg-emerald-500/20 text-emerald-400"
-              : "bg-zinc-500/20 text-zinc-400"
-          }`}>
-            <span className={`w-2 h-2 rounded-full ${schedule?.is_running ? "bg-emerald-400 animate-pulse" : "bg-zinc-400"}`} />
-            {schedule?.is_running ? "진행중" : "일시정지"}
-          </span>
-        </div>
-
-        <div className="flex gap-2">
-          <button
-            onClick={handleToggle}
-            className={`flex-1 py-2.5 rounded-lg font-medium transition-colors ${
-              schedule?.is_running
-                ? "bg-amber-500/20 text-amber-400 hover:bg-amber-500/30"
-                : "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30"
-            }`}
-          >
-            {schedule?.is_running ? "일시정지" : "시작"}
-          </button>
-          <button
-            onClick={() => setEditMode(true)}
-            className="px-4 py-2.5 rounded-lg bg-[var(--bg-chip)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-          >
-            설정
-          </button>
-        </div>
+    <div className="rounded-lg border border-[var(--border)] bg-[var(--card-bg)] p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-base font-semibold text-[var(--text-primary)]">자동 발행 스케줄</h2>
+        <span
+          className={`text-xs px-2 py-1 rounded ${
+            sch.enabled && !sch.paused
+              ? "bg-green-100 text-green-700"
+              : sch.paused
+              ? "bg-yellow-100 text-yellow-700"
+              : "bg-gray-100 text-gray-600"
+          }`}
+        >
+          {sch.enabled && !sch.paused ? "활성" : sch.paused ? "일시정지" : "비활성"}
+        </span>
       </div>
 
-      {/* Edit mode */}
-      {editMode && (
-        <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-6">
-          <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-4">스케줄 설정</h3>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm text-[var(--text-secondary)] mb-2">
-                시작 챕터
-              </label>
-              <input
-                type="number"
-                value={startCh}
-                onChange={(e) => setStartCh(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-lg bg-[var(--bg-base)] border border-[var(--border)] text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-[var(--text-secondary)] mb-2">
-                종료 챕터
-              </label>
-              <input
-                type="number"
-                value={endCh}
-                onChange={(e) => setEndCh(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-lg bg-[var(--bg-base)] border border-[var(--border)] text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-[var(--text-secondary)] mb-2">
-                일일 생성량
-              </label>
-              <input
-                type="number"
-                value={dailyQuota}
-                onChange={(e) => setDailyQuota(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-lg bg-[var(--bg-base)] border border-[var(--border)] text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-              />
-            </div>
-            <div className="flex gap-2 pt-2">
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="flex-1 py-2.5 rounded-lg bg-blue-500 text-white font-medium hover:bg-blue-600 disabled:opacity-50 transition-colors"
-              >
-                {saving ? "저장 중..." : "저장"}
-              </button>
-              <button
-                onClick={() => setEditMode(false)}
-                className="px-4 py-2.5 rounded-lg bg-[var(--bg-chip)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-              >
-                취소
-              </button>
-            </div>
-          </div>
-        </div>
+      {error && (
+        <div className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded">{error}</div>
       )}
 
-      {/* Current progress */}
-      {schedule && schedule.current_chapter && (
-        <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-6">
-          <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-2">현재 진행</h3>
-          <p className="text-2xl font-bold text-blue-400">
-            {schedule.current_chapter}화
-          </p>
-          <div className="mt-3 h-2 bg-[var(--bg-chip)] rounded-full overflow-hidden">
-            <div
-              className="h-full bg-blue-500 transition-all duration-300"
-              style={{
-                width: `${((schedule.current_chapter - startCh) / (endCh - startCh)) * 100}%`,
-              }}
-            />
-          </div>
-        </div>
-      )}
+      <div className="grid grid-cols-2 gap-3 text-sm">
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) => setEnabled(e.target.checked)}
+          />
+          <span>활성화</span>
+        </label>
+
+        <label className="flex items-center gap-2">
+          <span className="w-16 text-[var(--text-muted)]">빈도</span>
+          <select
+            value={frequency}
+            onChange={(e) => setFrequency(e.target.value as Schedule["frequency"])}
+            className="flex-1 border border-[var(--border)] rounded px-2 py-1 bg-[var(--input-bg)]"
+          >
+            {FREQUENCIES.map((f) => (
+              <option key={f.value} value={f.value}>{f.label}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex items-center gap-2">
+          <span className="w-16 text-[var(--text-muted)]">시작 시각</span>
+          <input
+            type="number" min={0} max={23} value={hour}
+            onChange={(e) => setHour(Number(e.target.value))}
+            className="w-16 border border-[var(--border)] rounded px-2 py-1 bg-[var(--input-bg)]"
+          />
+          <span>시</span>
+          <input
+            type="number" min={0} max={59} value={minute}
+            onChange={(e) => setMinute(Number(e.target.value))}
+            className="w-16 border border-[var(--border)] rounded px-2 py-1 bg-[var(--input-bg)]"
+          />
+          <span>분 (KST)</span>
+        </label>
+
+        <label className="flex items-center gap-2">
+          <span className="w-16 text-[var(--text-muted)]">회차당 수</span>
+          <select
+            value={batchSize}
+            onChange={(e) => setBatchSize(Number(e.target.value))}
+            className="flex-1 border border-[var(--border)] rounded px-2 py-1 bg-[var(--input-bg)]"
+          >
+            {BATCH_SIZES.map((n) => (
+              <option key={n} value={n}>{n}화</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div className="text-xs text-[var(--text-muted)] space-y-1">
+        <div>다음 실행: {nextRun || "—"}</div>
+        <div>다음 발행 화: ch{String(data.next_chapter_n).padStart(3, "0")}</div>
+        <div>마지막 실행: {sch.last_run_at || "—"} ({sch.last_status})</div>
+        {sch.last_error && (
+          <div className="text-red-500">에러: {sch.last_error}</div>
+        )}
+      </div>
+
+      <div className="flex gap-2">
+        <button
+          onClick={save}
+          disabled={saving}
+          className="px-4 py-2 bg-[var(--primary)] text-white rounded text-sm hover:opacity-90 disabled:opacity-50"
+        >
+          {saving ? "저장 중..." : "저장"}
+        </button>
+        <button
+          onClick={togglePause}
+          disabled={!sch.enabled}
+          className="px-4 py-2 border border-[var(--border)] rounded text-sm hover:bg-[var(--card-bg-hover)] disabled:opacity-50"
+        >
+          {sch.paused ? "재개" : "일시정지"}
+        </button>
+        <button
+          onClick={runNow}
+          disabled={running}
+          className="px-4 py-2 border border-[var(--border)] rounded text-sm hover:bg-[var(--card-bg-hover)] disabled:opacity-50"
+        >
+          {running ? "실행 중..." : `즉시 실행 (${batchSize}화)`}
+        </button>
+      </div>
     </div>
   );
 }

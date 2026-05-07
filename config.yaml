@@ -15,6 +15,18 @@ teams:
       model: "ollama:gemma4:e2b"
   publisher:
     model: "ollama:gemma4:e2b"
+  meta_writer:
+    concept:
+      model: "ollama:gemma4:e2b"
+    ending:
+      model: "ollama:gemma4:e2b"
+    plot_skeleton:
+      model: "ollama:gemma4:e2b"
+  meta_reviewer:
+    ending_lock:
+      model: "ollama:gemma4:e2b"
+    outline_consistency:
+      model: "ollama:gemma4:e2b"
 
 pipeline:
   max_retries: 3
@@ -31,3 +43,15 @@ reviewer:
 publisher:
   temperature: 0.4
   num_predict: 600
+
+meta_writer:
+  concept_temperature: 0.4
+  concept_num_predict: 800
+  ending_temperature: 0.6
+  ending_num_predict: 1200
+  plot_skeleton_temperature: 0.7
+  plot_skeleton_num_predict: 16000
+
+meta_reviewer:
+  temperature: 0.2
+  num_predict: 800

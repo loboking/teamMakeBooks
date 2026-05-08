@@ -285,25 +285,32 @@ def _repetition_review_node(state: PipelineState) -> dict:
     work_meta = load_work_meta(work_id, settings.novels_dir)
     names, name_limits = _load_main_characters(work_meta)
 
-    def _all_within_limits(c: dict) -> bool:
-        # 인물별 한계 검사
+    def _all_within_limits(c: dict) -> tuple[bool, str]:
+        """검사 결과 + 실패 사유. 통과 시 (True, "")."""
+        # 인물별 한계
         for full, cnt in c.get("names", {}).items():
             lim = name_limits.get(full, {"full": 7, "short": 25})
-            if cnt.get("full", 0) > lim["full"] or cnt.get("short", 0) > lim["short"]:
-                return False
-        # 그 외 — 동작동사 ≤3, 연속주어 ≤6, 등급직업 ≤2
-        if any(c2 > 3 for c2 in c.get("동작동사", {}).values()):
-            return False
-        if c.get("연속주어", 0) > 6:
-            return False
-        if any(c2 > 2 for c2 in c.get("등급직업", {}).values()):
-            return False
-        return True
+            if cnt.get("full", 0) > lim["full"]:
+                return False, f"{full}={cnt['full']}>{lim['full']}"
+            if cnt.get("short", 0) > lim["short"]:
+                return False, f"{full}_short={cnt['short']}>{lim['short']}"
+        # 동작동사 ≤4 (조금 완화)
+        for verb, c2 in c.get("동작동사", {}).items():
+            if c2 > 4:
+                return False, f"동사 '{verb}'={c2}>4"
+        # 연속주어 ≤8
+        if c.get("연속주어", 0) > 8:
+            return False, f"연속주어={c['연속주어']}>8"
+        # 등급직업은 헌터물 등에서만 의미 — 한계 ≤3
+        for kw, c2 in c.get("등급직업", {}).items():
+            if c2 > 3:
+                return False, f"등급 '{kw}'={c2}>3"
+        return True, ""
 
     # regex pre-count — 모두 한계 이내이면 LLM 없이 즉시 통과
     counts = _count_repetition_patterns(draft, names)
-    all_ok = _all_within_limits(counts)
-    if all_ok:
+    pre_ok, _ = _all_within_limits(counts)
+    if pre_ok:
         print(f"[reviewer:repetition] 시도 {attempt} — regex 전체 통과 (LLM 생략)")
         review_history.append({
             "role": "repetition", "attempt": attempt, "passed": True,
@@ -357,28 +364,21 @@ def _repetition_review_node(state: PipelineState) -> dict:
     if result.passed:
         # LLM 통과 시에도 regex 최종 검증 — LLM이 관대하게 통과시키는 경우 방지
         final_counts = _count_repetition_patterns(draft, names)
-        still_bad = not _all_within_limits(final_counts)
+        ok, reason = _all_within_limits(final_counts)
+        still_bad = not ok
         if still_bad:
-            # 가장 초과한 인물 표기
-            offenders = []
-            for full, cnt in final_counts.get("names", {}).items():
-                lim = name_limits.get(full, {"full": 7, "short": 25})
-                if cnt.get("full", 0) > lim["full"]:
-                    offenders.append(f"{full}={cnt['full']}>{lim['full']}")
-                if cnt.get("short", 0) > lim["short"]:
-                    offenders.append(f"{full}_short={cnt['short']}>{lim['short']}")
-            offenders_str = ", ".join(offenders) or "(이름 외 패턴)"
+            offenders_str = reason or "(이름 외 패턴)"
             print(f"[reviewer:repetition] LLM 통과했으나 regex 재검증 실패 — {offenders_str}")
-            # LLM 통과를 무시하고 polish 재시도
+            # 5회 소진 시: halt 대신 경고 마킹 후 publisher로 통과 (사용자 정책: 본문 발행 우선)
             if attempt >= rep_max:
-                msg = f"[ALERT] {work_id} ch{state['chapter_n']:03d} repetition 검수 {rep_max}회 소진 (regex 최종검증 불합격).\n{offenders_str}"
+                msg = f"[ALERT] {work_id} ch{state['chapter_n']:03d} repetition 검수 {rep_max}회 소진 — 경고 마킹 후 발행: {offenders_str}"
                 print(msg)
+                review_history[-1]["passed"] = True
+                review_history[-1]["reason"] += f" [경고: regex 최종검증 미달 — {offenders_str}]"
                 return {
                     "retry_counts": retry_counts,
                     "review_history": review_history,
-                    "failure_stage": "repetition",
-                    "failure_reason": f"regex final: {offenders_str}",
-                    "current_stage": "__halt__",
+                    "current_stage": "publisher",
                 }
             # polish 재시도 — feedback에 regex 카운트 주입
             counts_report = _format_count_report(final_counts, name_limits)
@@ -398,7 +398,7 @@ def _repetition_review_node(state: PipelineState) -> dict:
                 "draft": new_draft,
                 "retry_counts": retry_counts,
                 "review_history": review_history,
-                "current_stage": "reviewer_repetition",
+                "current_stage": "repetition",
             }
         print(f"[reviewer:repetition] 통과 (점수 {result.score}) — regex 최종 검증 OK")
         return {

@@ -296,16 +296,20 @@ def _count_repetition_patterns(draft: str, names: list[dict]) -> dict:
     narrative = _extract_narrative(draft)
     counts: dict = {}
 
-    # 인물별 카운트 (full + short)
+    # 인물별 카운트 (full + short) — short는 풀네임 부분 일치를 제외하고 단독 등장만 카운트
     name_counts: dict[str, dict[str, int]] = {}
     for n in names:
         full = str(n.get("name", "")).strip()
         short = str(n.get("short", "")).strip()
-        if full:
-            name_counts[full] = {
-                "full": len(re.findall(re.escape(full), narrative)),
-                "short": len(re.findall(re.escape(short), narrative)) if short else 0,
-            }
+        if not full:
+            continue
+        full_count = len(re.findall(re.escape(full), narrative))
+        short_count = 0
+        if short and short != full:
+            # 풀네임 출현을 먼저 placeholder로 마스킹 → short의 단독 등장만 카운트
+            masked = re.sub(re.escape(full), "\x00", narrative)
+            short_count = len(re.findall(re.escape(short), masked))
+        name_counts[full] = {"full": full_count, "short": short_count}
     counts['names'] = name_counts
 
     verbs = {}

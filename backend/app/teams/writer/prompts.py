@@ -236,12 +236,31 @@ def build_polish_prompt(persona, body: str, ctx=None) -> str:
 def build_rep_polish_prompt(draft: str, feedback: str, ctx=None) -> str:
     """반복 패턴 문맥 기반 정제 프롬프트. 기계적 일괄 금지."""
     main_block = _format_main_characters(ctx) if ctx is not None else ""
+    # 작품 주인공 풀네임/짧은이름 추출 (강제 교체 규칙 명시용)
+    proto_full = ""
+    proto_short = ""
+    if ctx is not None:
+        chars = list(getattr(ctx, "main_characters", []) or [])
+        if chars:
+            proto_full = str(chars[0].get("name", ""))
+            proto_short = str(chars[0].get("short", ""))
+    forced_block = ""
+    if proto_full and proto_short:
+        forced_block = (
+            f"\n### ⚠️ 강제 교체 룰 — 본 작품 주인공 풀네임 '{proto_full}'\n"
+            f"- 회차 전체에서 '{proto_full}'(풀네임) 등장은 **5회 이내**로 줄여라.\n"
+            f"- 5회 이상이면 6번째부터 '{proto_short}' / '그녀' / 주어 생략으로 강제 교체.\n"
+            f"- 한 문단 안에 '{proto_full}' 2회 이상 등장 금지 — 두 번째는 무조건 교체.\n"
+            f"- '{proto_full}은/는/이/가/의/을/를' 패턴이 5문장 연속이면 일부를 '{proto_short}' 또는 주어 생략으로 교체.\n"
+            f"- 분량 제한 풀어줌 — 풀네임 줄이기 위해 ±20% 변동 허용.\n\n"
+        )
     return (
         "[반복 패턴 문맥 정제 — 기계적 치환 금지, 문맥 판단 필수]\n\n"
-        f"{main_block}\n\n"
+        f"{main_block}\n"
+        f"{forced_block}"
         f"[검수자 피드백]\n{feedback.strip()}\n\n"
-        "[정제 원칙 — 무엇을 바꾸지가 아니라, 무엇을 바꾸지 결정하는 것]\n"
-        "사건·플롯·대사·시스템 메시지는 100% 보존. 분량 ±10% 이내.\n\n"
+        "[정제 원칙]\n"
+        "사건·플롯·대사·시스템 메시지는 100% 보존. 분량 ±20% 이내.\n\n"
         "### 주인공 풀네임 → 짧은 이름·대명사 교체 규칙 (가장 중요)\n"
         "위 [현재 작품 주조연 호명] 블록의 짧은 이름·대명사를 사용. 학습 예시('이준' 등)는 다른 작품 인물이니 본문에 절대 등장 금지.\n\n"
         "### (참고) '이준' 교체 규칙 — 다른 작품(무등급 헌터)의 예시. 본 작품 주인공 이름으로 적용:\n"

@@ -6,8 +6,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .auth import router as auth_router
+from .progress import router as progress_router
 from .routes import router
 from ..config import load_settings
+from ..db import init_db
 
 
 @asynccontextmanager
@@ -16,6 +19,7 @@ async def lifespan(app: FastAPI):
     # 시작 시 설정 확인
     settings = load_settings()
     print(f"[api] novels_dir: {settings.novels_dir}")
+    await init_db()
     yield
     # 종료 시 정리
 
@@ -39,6 +43,8 @@ def create_app() -> FastAPI:
 
     # 라우터 등록
     app.include_router(router, prefix="/api")
+    app.include_router(auth_router, prefix="/api")
+    app.include_router(progress_router, prefix="/api")
 
     @app.get("/")
     def root():

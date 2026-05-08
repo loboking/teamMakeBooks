@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import { getToken, saveProgress } from "@/lib/auth";
 import ReaderHeader from "./ReaderHeader";
 import ReaderFooter from "./ReaderFooter";
 import TTSPlayer from "./TTSPlayer";
@@ -22,6 +23,35 @@ export default function ReaderClient({
   body,
 }: Props) {
   const [fontSize, setFontSize] = useState(18);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleScroll = () => {
+      const pct =
+        document.documentElement.scrollHeight - window.innerHeight > 0
+          ? window.scrollY / (document.documentElement.scrollHeight - window.innerHeight)
+          : 0;
+
+      if (getToken()) {
+        // 로그인 상태: 서버에 5초 디바운스 저장
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => {
+          saveProgress(workId, chapterN, Math.round(pct * 100) / 100);
+        }, 5000);
+      } else {
+        // 비로그인: localStorage 폴백
+        localStorage.setItem(`progress:${workId}:${chapterN}`, String(pct));
+      }
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [workId, chapterN]);
 
   return (
     <div className="flex flex-col min-h-screen">

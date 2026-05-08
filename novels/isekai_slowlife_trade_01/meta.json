@@ -1,10 +1,27 @@
 {
   "work_id": "isekai_slowlife_trade_01",
-  "title": "이계 무역가 남매",
+  "title": "현대 고등학교와 이계가 연결되어, 18세 고3 차하린이",
   "genre": "이세계물",
+  "mood": "슬로우라이프",
   "author_id": "isekai_slowlife_trade_01_writer_01",
   "is_ai_persona": true,
-  "copyright": "© 2026 teamMakeBooks",
-  "published_chapters": 20,
-  "total_planned": 225
+  "total_chapters": 225,
+  "published_chapters": 2,
+  "protagonist": "차하린",
+  "keywords": [
+    "이세계",
+    "슬로우라이프",
+    "양방향무역",
+    "먼치킨",
+    "각성"
+  ],
+  "main_characters": [
+    {
+      "name": "차하린",
+      "short": "하린",
+      "limit_full": 20,
+      "limit_short": 50
+    }
+  ],
+  "copyright": "© 2026 teamMakeBooks"
 }

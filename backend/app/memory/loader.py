@@ -37,6 +37,9 @@ class NovelContext:
     event_log: str = ""
     character_state: str = ""
     world_state: str = ""
+    # 작품 메타에서 로드된 주조연 호명·임계 (반복 검수용)
+    main_characters: list[dict] = field(default_factory=list)
+    name_limits: dict = field(default_factory=dict)
 
 
 def load_work_meta(work_id: str, novels_dir: Path) -> dict:
@@ -76,6 +79,24 @@ def load_novel_context(
     def opt(p: Path) -> str:
         return p.read_text(encoding="utf-8") if p.exists() else ""
 
+    # 메타에서 main_characters 로드 (회차 검수자가 동적으로 사용)
+    meta = load_work_meta(work_id, novels_dir)
+    raw_chars = meta.get("main_characters") or []
+    if not raw_chars:
+        proto = str(meta.get("protagonist", "") or "").strip()
+        raw_chars = [{"name": proto, "short": "", "limit_full": 7, "limit_short": 25}] if proto else []
+    main_characters: list[dict] = []
+    name_limits: dict = {}
+    for c in raw_chars:
+        full = str(c.get("name", "")).strip()
+        if not full:
+            continue
+        main_characters.append({"name": full, "short": str(c.get("short", "")).strip()})
+        name_limits[full] = {
+            "full": int(c.get("limit_full", 7)),
+            "short": int(c.get("limit_short", 25)),
+        }
+
     return NovelContext(
         work_id=work_id,
         world_bible=world_bible,
@@ -91,4 +112,6 @@ def load_novel_context(
         event_log=opt(base / "memory" / "event_log.md"),
         character_state=opt(base / "memory" / "character_state.md"),
         world_state=opt(base / "memory" / "world_state.md"),
+        main_characters=main_characters,
+        name_limits=name_limits,
     )

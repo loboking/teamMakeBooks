@@ -82,7 +82,7 @@ class WriterAgent:
 
     def polish_flow(self, draft: str, ctx, persona, work_id: str) -> str:
         """완성된 본문의 호흡만 정제. 단문 → 어미 연결. 의미 보존."""
-        prompt = build_polish_prompt(persona, draft)
+        prompt = build_polish_prompt(persona, draft, ctx)
         resp = self.provider.complete(
             prompt,
             max_tokens=max(self.beat_num_predict * 4, 12000),
@@ -100,9 +100,9 @@ class WriterAgent:
             )
         return resp.text.strip()
 
-    def polish_repetition(self, draft: str, feedback: str, work_id: str) -> str:
+    def polish_repetition(self, draft: str, feedback: str, work_id: str, ctx=None) -> str:
         """반복 패턴만 집중 교체. 본문 전체 재작성 X."""
-        prompt = build_rep_polish_prompt(draft, feedback)
+        prompt = build_rep_polish_prompt(draft, feedback, ctx)
         resp = self.provider.complete(
             prompt,
             max_tokens=max(self.beat_num_predict * 3, 8000),

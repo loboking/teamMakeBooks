@@ -241,6 +241,35 @@ def _make_reviewer_node(role: str):
     return _reviewer_node
 
 
+def _load_main_characters(work_meta: dict) -> tuple[list[dict], dict]:
+    """meta.json에서 main_characters 로드 → (names, name_limits).
+
+    형식: meta.json의 "main_characters" = [
+        {"name":"허다연","short":"다연","limit_full":5,"limit_short":25},
+        ...
+    ]
+    main_characters 누락 시 protagonist 단일 사용 (보수적 폴백).
+    """
+    raw = work_meta.get("main_characters") or []
+    if not raw:
+        # 폴백: protagonist 한 명. short 없음.
+        proto = str(work_meta.get("protagonist", "") or work_meta.get("title", "주인공")).strip()
+        raw = [{"name": proto, "short": "", "limit_full": 7, "limit_short": 25}]
+
+    names: list[dict] = []
+    name_limits: dict = {}
+    for c in raw:
+        full = str(c.get("name", "")).strip()
+        if not full:
+            continue
+        names.append({"name": full, "short": str(c.get("short", "")).strip()})
+        name_limits[full] = {
+            "full": int(c.get("limit_full", 7)),
+            "short": int(c.get("limit_short", 25)),
+        }
+    return names, name_limits
+
+
 def _repetition_review_node(state: PipelineState) -> dict:
     """전용 반복 검수 노드 — regex pre-count + LLM 판정 + polish_repetition 수정."""
     settings: Settings = state["settings"]
@@ -252,15 +281,28 @@ def _repetition_review_node(state: PipelineState) -> dict:
     attempt = retry_counts.get("repetition", 0) + 1
     retry_counts["repetition"] = attempt
 
+    # 작품 메타에서 주조연 호명·임계 로드 (강이준 하드코딩 제거)
+    work_meta = load_work_meta(work_id, settings.novels_dir)
+    names, name_limits = _load_main_characters(work_meta)
+
+    def _all_within_limits(c: dict) -> bool:
+        # 인물별 한계 검사
+        for full, cnt in c.get("names", {}).items():
+            lim = name_limits.get(full, {"full": 7, "short": 25})
+            if cnt.get("full", 0) > lim["full"] or cnt.get("short", 0) > lim["short"]:
+                return False
+        # 그 외 — 동작동사 ≤3, 연속주어 ≤6, 등급직업 ≤2
+        if any(c2 > 3 for c2 in c.get("동작동사", {}).values()):
+            return False
+        if c.get("연속주어", 0) > 6:
+            return False
+        if any(c2 > 2 for c2 in c.get("등급직업", {}).values()):
+            return False
+        return True
+
     # regex pre-count — 모두 한계 이내이면 LLM 없이 즉시 통과
-    counts = _count_repetition_patterns(draft)
-    all_ok = (
-        counts['이준'] <= 25
-        and counts['강이준'] <= 7
-        and all(c <= 3 for c in counts.get('동작동사', {}).values())
-        and counts['연속주어'] <= 6
-        and all(c <= 2 for c in counts.get('등급직업', {}).values())
-    )
+    counts = _count_repetition_patterns(draft, names)
+    all_ok = _all_within_limits(counts)
     if all_ok:
         print(f"[reviewer:repetition] 시도 {attempt} — regex 전체 통과 (LLM 생략)")
         review_history.append({
@@ -289,14 +331,19 @@ def _repetition_review_node(state: PipelineState) -> dict:
         logs_dir=settings.logs_dir,
     )
 
-    # 빈 ctx 대신 최소 컨텍스트 생성 (repetition은 ctx가 필요없지만 시그니처 요구)
+    # 작품 메타 + main_characters를 가진 최소 컨텍스트 (repetition 프롬프트가 ctx에서 names 추출)
+    _ch_n = state["chapter_n"]
+    _names = list(names)
+    _name_limits = dict(name_limits)
     class _FakeCtx:
-        current_chapter_n = state["chapter_n"]
+        current_chapter_n = _ch_n
         theme = ""
         naming_table = ""
         characters = ""
         plot_outline = ""
         chapter_outline = type('CO', (), {'overall': property(lambda self: '')})()
+        main_characters = _names
+        name_limits = _name_limits
     result: ReviewResult = reviewer.review(draft, _FakeCtx(), attempt, work_id)
 
     review_history.append({
@@ -309,29 +356,32 @@ def _repetition_review_node(state: PipelineState) -> dict:
 
     if result.passed:
         # LLM 통과 시에도 regex 최종 검증 — LLM이 관대하게 통과시키는 경우 방지
-        final_counts = _count_repetition_patterns(draft)
-        still_bad = (
-            final_counts['이준'] > 25
-            or final_counts['강이준'] > 7
-            or final_counts['연속주어'] > 6
-            or any(c > 3 for c in final_counts.get('동작동사', {}).values())
-            or any(c > 2 for c in final_counts.get('등급직업', {}).values())
-        )
+        final_counts = _count_repetition_patterns(draft, names)
+        still_bad = not _all_within_limits(final_counts)
         if still_bad:
-            print(f"[reviewer:repetition] LLM 통과했으나 regex 재검증 실패 — 이준={final_counts['이준']}, 강이준={final_counts['강이준']}")
+            # 가장 초과한 인물 표기
+            offenders = []
+            for full, cnt in final_counts.get("names", {}).items():
+                lim = name_limits.get(full, {"full": 7, "short": 25})
+                if cnt.get("full", 0) > lim["full"]:
+                    offenders.append(f"{full}={cnt['full']}>{lim['full']}")
+                if cnt.get("short", 0) > lim["short"]:
+                    offenders.append(f"{full}_short={cnt['short']}>{lim['short']}")
+            offenders_str = ", ".join(offenders) or "(이름 외 패턴)"
+            print(f"[reviewer:repetition] LLM 통과했으나 regex 재검증 실패 — {offenders_str}")
             # LLM 통과를 무시하고 polish 재시도
             if attempt >= rep_max:
-                msg = f"[ALERT] {work_id} ch{state['chapter_n']:03d} repetition 검수 {rep_max}회 소진 (regex 최종검증 불합격).\n이준={final_counts['이준']}, 강이준={final_counts['강이준']}"
+                msg = f"[ALERT] {work_id} ch{state['chapter_n']:03d} repetition 검수 {rep_max}회 소진 (regex 최종검증 불합격).\n{offenders_str}"
                 print(msg)
                 return {
                     "retry_counts": retry_counts,
                     "review_history": review_history,
                     "failure_stage": "repetition",
-                    "failure_reason": f"regex final: 이준={final_counts['이준']}, 강이준={final_counts['강이준']}",
+                    "failure_reason": f"regex final: {offenders_str}",
                     "current_stage": "__halt__",
                 }
             # polish 재시도 — feedback에 regex 카운트 주입
-            counts_report = _format_count_report(final_counts)
+            counts_report = _format_count_report(final_counts, name_limits)
             polish_feedback = f"여전히 초과됨:\n{counts_report}\n더 적극적으로 제거하세요."
             _persona = state["persona"]
             _wm = _persona.model_override or settings.model_key("writer")
@@ -341,10 +391,11 @@ def _repetition_review_node(state: PipelineState) -> dict:
                 beat_num_predict=int(settings.config.get("writer", {}).get("beat_num_predict", 4000)),
                 logs_dir=settings.logs_dir,
             )
-            _w.polish_repetition(draft, polish_feedback, work_id)
+            new_draft = _w.polish_repetition(draft, polish_feedback, work_id, ctx=_FakeCtx())
             review_history[-1]["passed"] = False
-            review_history[-1]["reason"] += f" (regex 재검증: 이준={final_counts['이준']})"
+            review_history[-1]["reason"] += f" (regex 재검증: {offenders_str})"
             return {
+                "draft": new_draft,
                 "retry_counts": retry_counts,
                 "review_history": review_history,
                 "current_stage": "reviewer_repetition",
@@ -379,7 +430,7 @@ def _repetition_review_node(state: PipelineState) -> dict:
         beat_num_predict=int(settings.config.get("writer", {}).get("beat_num_predict", 4000)),
         logs_dir=settings.logs_dir,
     )
-    new_draft = writer.polish_repetition(draft, result.feedback, work_id)
+    new_draft = writer.polish_repetition(draft, result.feedback, work_id, ctx=_FakeCtx())
     return {
         "draft": new_draft,
         "retry_counts": retry_counts,

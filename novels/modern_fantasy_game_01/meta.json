@@ -5,5 +5,19 @@
   "author_id": "modern_fantasy_writer_01",
   "is_ai_persona": true,
   "copyright": "© 2026 teamMakeBooks",
-  "published_chapters": 100
+  "published_chapters": 100,
+  "main_characters": [
+    {
+      "name": "강이준",
+      "short": "이준",
+      "limit_full": 7,
+      "limit_short": 15
+    },
+    {
+      "name": "박세린",
+      "short": "세린",
+      "limit_full": 5,
+      "limit_short": 15
+    }
+  ]
 }

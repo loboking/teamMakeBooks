@@ -276,7 +276,7 @@ def _extract_narrative(draft: str) -> str:
 
 
 _ACTION_VERBS = [
-    '바라보았다', '확인했다', '끄덕였다', '미세하게', '입을 열었다',
+    '바라보았다', '확인했다', '끄덕였다', '입을 열었다',
     '발동했다', '눈을 감았다', '손을 뻗었다', '분석했다', '눈을 떴다',
     '주먹을 쥐었다', '깊이 숨을', '고개를 돌렸다',
 ]
@@ -284,13 +284,29 @@ _ACTION_VERBS = [
 _GRADE_KEYWORDS = ['F급', 'D급', 'C급', 'B급', 'A급', 'S급']
 
 
-def _count_repetition_patterns(draft: str) -> dict:
-    """서술 텍스트에서 반복 패턴 regex 카운트."""
+def _count_repetition_patterns(draft: str, names: list[dict]) -> dict:
+    """서술 텍스트에서 반복 패턴 regex 카운트.
+
+    names: 작품별 주조연 호명 — [{"name":"허다연","short":"다연"}, ...]
+           반드시 작품 메타에서 로드해 전달해야 한다 (호환 폴백 없음).
+    """
+    if not names:
+        raise ValueError("_count_repetition_patterns: names 필수 (작품 main_characters)")
+
     narrative = _extract_narrative(draft)
     counts: dict = {}
 
-    counts['이준'] = len(re.findall(r'이준', narrative))
-    counts['강이준'] = len(re.findall(r'강이준', narrative))
+    # 인물별 카운트 (full + short)
+    name_counts: dict[str, dict[str, int]] = {}
+    for n in names:
+        full = str(n.get("name", "")).strip()
+        short = str(n.get("short", "")).strip()
+        if full:
+            name_counts[full] = {
+                "full": len(re.findall(re.escape(full), narrative)),
+                "short": len(re.findall(re.escape(short), narrative)) if short else 0,
+            }
+    counts['names'] = name_counts
 
     verbs = {}
     for verb in _ACTION_VERBS:
@@ -299,11 +315,19 @@ def _count_repetition_patterns(draft: str) -> dict:
             verbs[verb] = c
     counts['동작동사'] = verbs
 
-    # 연속 주어 패턴
+    # 연속 주어 패턴 — 모든 주조연 + '그/그녀' 포함
+    subject_pattern_parts = ["그", "그녀"]
+    for n in names:
+        if n.get("name"):
+            subject_pattern_parts.append(re.escape(n["name"]))
+        if n.get("short"):
+            subject_pattern_parts.append(re.escape(n["short"]))
+    subject_re = re.compile(rf"(?:{'|'.join(subject_pattern_parts)})[은는이가을를의]")
+
     max_consec = 0
     cur = 0
     for line in narrative.split('\n'):
-        if re.match(r'(이준|그|강이준)[은는이가을를의]', line.lstrip()):
+        if subject_re.match(line.lstrip()):
             cur += 1
             if cur > max_consec:
                 max_consec = cur
@@ -321,16 +345,26 @@ def _count_repetition_patterns(draft: str) -> dict:
     return counts
 
 
-def _format_count_report(counts: dict) -> str:
-    """카운트 결과를 프롬프트용으로 포맷."""
+def _format_count_report(counts: dict, name_limits: dict | None = None) -> str:
+    """카운트 결과를 프롬프트용으로 포맷.
+
+    name_limits: {"강이준": {"full": 7, "short": 15}, ...}
+                 None이면 기본 한계 (full=7, short=15) 적용.
+    """
+    name_limits = name_limits or {}
     lines = []
-    ij = counts['이준']
-    lines.append(f"서술 '이준': {ij}회 (한계 15) {'⚠️ 초과' if ij > 15 else '✓'}")
-    kj = counts['강이준']
-    lines.append(f"서술 '강이준': {kj}회 (한계 7) {'⚠️ 초과' if kj > 7 else '✓'}")
+    for full, c in counts.get('names', {}).items():
+        lim = name_limits.get(full, {})
+        lim_full = int(lim.get("full", 7))
+        lim_short = int(lim.get("short", 15))
+        if c.get("short", 0) > 0:
+            short_v = c["short"]
+            lines.append(f"서술 '{full[1:] if len(full) > 1 else full}'(short): {short_v}회 (한계 {lim_short}) {'⚠️ 초과' if short_v > lim_short else '✓'}")
+        full_v = c.get("full", 0)
+        lines.append(f"서술 '{full}': {full_v}회 (한계 {lim_full}) {'⚠️ 초과' if full_v > lim_full else '✓'}")
     for verb, c in sorted(counts.get('동작동사', {}).items(), key=lambda x: -x[1]):
         lines.append(f"'{verb}': {c}회 (한계 3) {'⚠️ 초과' if c > 3 else '✓'}")
-    cs = counts['연속주어']
+    cs = counts.get('연속주어', 0)
     lines.append(f"연속 주어 최대: {cs}문장 (한계 6) {'⚠️ 초과' if cs > 6 else '✓'}")
     for kw, c in sorted(counts.get('등급직업', {}).items(), key=lambda x: -x[1]):
         lines.append(f"'{kw}': {c}회 (한계 2) {'⚠️ 초과' if c > 2 else '✓'}")
@@ -384,10 +418,14 @@ def build_reviewer_prompt(role: str, ctx, draft: str) -> str:
             f"[현재 회차({ctx.current_chapter_n}화) 의도]\n{chapter_intent}\n\n"
         )
     elif role == "repetition":
-        counts = _count_repetition_patterns(draft)
+        names = list(getattr(ctx, "main_characters", []) or [])
+        if not names:
+            raise ValueError("repetition 검수자: ctx.main_characters 없음 (작품 meta.json에 main_characters 추가 필요)")
+        counts = _count_repetition_patterns(draft, names)
+        name_limits = dict(getattr(ctx, "name_limits", {}) or {})
         context_block = (
             f"[사전 카운트 결과 — 정규식 추출 (서술 텍스트만)]\n"
-            f"{_format_count_report(counts)}\n\n"
+            f"{_format_count_report(counts, name_limits)}\n\n"
         )
     else:
         context_block = ""

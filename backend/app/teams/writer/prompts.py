@@ -61,9 +61,28 @@ def build_context_block(ctx) -> str:
     )
 
 
+def _format_main_characters(ctx) -> str:
+    """ctx.main_characters를 프롬프트용 호명 가이드로 직렬화."""
+    chars = list(getattr(ctx, "main_characters", []) or [])
+    if not chars:
+        return "[현재 작품 주인공 정보 없음 — meta.json의 main_characters 누락]"
+    lines = ["[현재 작품 주조연 호명 — 본문에서 반드시 이 이름 사용]"]
+    for i, c in enumerate(chars):
+        name = c.get("name", "")
+        short = c.get("short", "")
+        role = "주인공" if i == 0 else "조연"
+        if short:
+            lines.append(f"- {role}: 풀네임 '{name}', 짧은 이름 '{short}' — 90%는 '{short}' 또는 대명사·주어 생략")
+        else:
+            lines.append(f"- {role}: '{name}' — 회차당 풀네임 5회 이내, 나머지는 대명사·주어 생략")
+    lines.append("⚠️ 아래 학습 예시에 등장하는 '강이준/이준/박세린/세린'은 다른 작품(무등급 헌터) 인물이다. 본 작품 본문에 절대 등장시키지 말고, 위 호명만 사용.")
+    return "\n".join(lines)
+
+
 def build_beat_prompt(persona, ctx, beat, prev_tail: str, beat_index: int, total_beats: int) -> str:
     persona_block = build_persona_block(persona)
     context_block = build_context_block(ctx)
+    main_block = _format_main_characters(ctx)
 
     prev_block = ""
     if prev_tail:
@@ -73,6 +92,7 @@ def build_beat_prompt(persona, ctx, beat, prev_tail: str, beat_index: int, total
 
     return (
         f"{persona_block}\n"
+        f"{main_block}\n\n"
         f"{context_block}\n"
         f"[1화 전체 의도]\n{chapter_overall}\n"
         f"{prev_block}\n"
@@ -165,8 +185,10 @@ def build_beat_prompt(persona, ctx, beat, prev_tail: str, beat_index: int, total
 def build_revise_prompt(persona, ctx, draft: str, feedback: str) -> str:
     persona_block = build_persona_block(persona)
     context_block = build_context_block(ctx)
+    main_block = _format_main_characters(ctx)
     return (
         f"{persona_block}\n"
+        f"{main_block}\n\n"
         f"{context_block}\n"
         f"[기존 본문]\n{draft.strip()}\n\n"
         f"[검수자 피드백]\n{feedback.strip()}\n\n"
@@ -177,15 +199,17 @@ def build_revise_prompt(persona, ctx, draft: str, feedback: str) -> str:
     )
 
 
-def build_polish_prompt(persona, body: str) -> str:
+def build_polish_prompt(persona, body: str, ctx=None) -> str:
     """완성된 본문의 호흡만 다듬는 정제 프롬프트. 의미·이름·플롯 변경 금지."""
+    main_block = _format_main_characters(ctx) if ctx is not None else ""
     return (
         f"[작가 페르소나]\n"
         f"필명: {persona.name}\n"
         f"스타일: 한국 웹소설 다크 판타지 — 평균 문장 25~40자, 건조하고 타격감 있는 문체\n\n"
+        f"{main_block}\n\n"
         f"[정제 지시 — 한국 웹소설 4대 룰로 다듬는다]\n"
         f"아래 본문을 다음 4가지 룰로 정제. 의미·이름·플롯·대사·시스템창은 100% 보존.\n\n"
-        f"룰 1. 주어 반복 제거: '강이준은/그는'이 모든 문장 첫머리에 오는 부분, 주어 생략 또는 어미 연결로 통합.\n"
+        f"룰 1. 주어 반복 제거: 주인공 이름이 모든 문장 첫머리에 오는 부분, 주어 생략 또는 어미 연결로 통합.\n"
         f"룰 2. Telling 제거: '그는 무서웠다/익숙했다/절망했다' 같은 직접 요약은 오감 묘사로 변환 (땀·떨림·시선·호흡 등).\n"
         f"룰 3. 시각 포맷: 대사 줄바꿈 + 큰따옴표, 시스템 [...] 분리, 효과음 '—'로.\n"
         f"룰 4. 호흡: 자잘한 단문 ~서/~며/~고로 묶기. 평균 25~40자.\n\n"
@@ -209,14 +233,18 @@ def build_polish_prompt(persona, body: str) -> str:
     )
 
 
-def build_rep_polish_prompt(draft: str, feedback: str) -> str:
+def build_rep_polish_prompt(draft: str, feedback: str, ctx=None) -> str:
     """반복 패턴 문맥 기반 정제 프롬프트. 기계적 일괄 금지."""
+    main_block = _format_main_characters(ctx) if ctx is not None else ""
     return (
         "[반복 패턴 문맥 정제 — 기계적 치환 금지, 문맥 판단 필수]\n\n"
+        f"{main_block}\n\n"
         f"[검수자 피드백]\n{feedback.strip()}\n\n"
         "[정제 원칙 — 무엇을 바꾸지가 아니라, 무엇을 바꾸지 결정하는 것]\n"
         "사건·플롯·대사·시스템 메시지는 100% 보존. 분량 ±10% 이내.\n\n"
-        "### '이준' 교체 규칙 (가장 중요)\n"
+        "### 주인공 풀네임 → 짧은 이름·대명사 교체 규칙 (가장 중요)\n"
+        "위 [현재 작품 주조연 호명] 블록의 짧은 이름·대명사를 사용. 학습 예시('이준' 등)는 다른 작품 인물이니 본문에 절대 등장 금지.\n\n"
+        "### (참고) '이준' 교체 규칙 — 다른 작품(무등급 헌터)의 예시. 본 작품 주인공 이름으로 적용:\n"
         "1. **유지해야 하는 경우** — 다음에서는 '이준' 그대로 유지:\n"
         "   - 다른 인물(박세린, 김태석 등)의 행동/대사 직후 이준의 반응을 쓸 때 (혼동 방지)\n"
         "   - 문단 첫 등장에서 인물이 바뀔 때 (독자가 헷갈리지 않게)\n"

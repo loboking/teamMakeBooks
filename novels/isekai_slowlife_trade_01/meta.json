@@ -1,6 +1,6 @@
 {
   "work_id": "isekai_slowlife_trade_01",
-  "title": "현대 고등학교와 이계가 연결되어, 18세 고3 차하린이",
+  "title": "이계 무역가 차하린",
   "genre": "이세계물",
   "mood": "슬로우라이프",
   "author_id": "isekai_slowlife_trade_01_writer_01",
@@ -19,8 +19,32 @@
     {
       "name": "차하린",
       "short": "하린",
-      "limit_full": 20,
-      "limit_short": 50
+      "limit_full": 5,
+      "limit_short": 35
+    },
+    {
+      "name": "마린",
+      "short": "마린",
+      "limit_full": 25,
+      "limit_short": 0
+    },
+    {
+      "name": "한도영",
+      "short": "한도영",
+      "limit_full": 10,
+      "limit_short": 0
+    },
+    {
+      "name": "도원 영감",
+      "short": "도원 영감",
+      "limit_full": 10,
+      "limit_short": 0
+    },
+    {
+      "name": "좌선장",
+      "short": "좌선장",
+      "limit_full": 10,
+      "limit_short": 0
     }
   ],
   "copyright": "© 2026 teamMakeBooks"

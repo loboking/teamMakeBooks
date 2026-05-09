@@ -545,17 +545,15 @@ class MetaWriterAgent:
         data = _parse_json_object(resp.text)
         beats_raw = data.get("beats") or []
 
-        # 보정: 정확히 3개 강제, name 정규화
-        defaults = ["intro", "development", "climax"]
+        # 보정: 정확히 2개 강제 (intro+climax), name 정규화
+        defaults = ["intro", "climax"]
         beats: list[dict] = []
-        for i in range(3):
+        for i in range(2):
             src = beats_raw[i] if i < len(beats_raw) and isinstance(beats_raw[i], dict) else {}
             name = str(src.get("name", "")).strip() or defaults[i]
             instruction = str(src.get("instruction", "")).strip()
             beats.append({"name": name, "instruction": instruction})
 
-        # 빈/짧은 instruction 검출 — gemma4가 짧게 줄 수 있어 200자 임계.
-        # (modern_fantasy_game_01의 ch001.yaml instruction도 약 250~400자 분포)
         if any(len(b["instruction"]) < 200 for b in beats):
             raise LLMProviderError(
                 f"ch{int(chapter.get('chapter_n', 0)):03d} 비트 instruction 길이 부족 "

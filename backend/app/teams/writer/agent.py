@@ -46,7 +46,8 @@ class WriterAgent:
             )
             text = resp.text.strip()
             full_text_parts.append(text)
-            prev_tail = text[-400:]
+            # 직전 비트 전체를 다음 비트에 전달 — 사건 중복 방지 (gemma4가 끝부분만으론 못 따라감)
+            prev_tail = text
 
             if self.logs_dir:
                 log_call(

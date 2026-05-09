@@ -104,8 +104,8 @@ BEAT_EXPAND_SCHEMA: dict = {
     "properties": {
         "beats": {
             "type": "array",
-            "minItems": 3,
-            "maxItems": 3,
+            "minItems": 2,
+            "maxItems": 2,
             "items": {
                 "type": "object",
                 "properties": {

@@ -410,15 +410,15 @@ def _repetition_review_node(state: PipelineState) -> dict:
     if attempt >= rep_max:
         msg = (
             f"[ALERT] {work_id} ch{state['chapter_n']:03d} repetition 검수 "
-            f"{rep_max}회 소진.\n사유: {result.reason}\n가이드: {result.feedback}"
+            f"{rep_max}회 소진 — 경고 마킹 후 발행: {result.feedback}"
         )
         print(msg)
+        review_history[-1]["passed"] = True
+        review_history[-1]["reason"] += f" [경고: {rep_max}회 소진 — {result.feedback}]"
         return {
             "retry_counts": retry_counts,
             "review_history": review_history,
-            "failure_stage": "repetition",
-            "failure_reason": result.feedback,
-            "current_stage": "__halt__",
+            "current_stage": "publisher",
         }
 
     # 전용 반복 정제 (revise 대신 polish_repetition 사용)

@@ -86,7 +86,13 @@ def build_beat_prompt(persona, ctx, beat, prev_tail: str, beat_index: int, total
 
     prev_block = ""
     if prev_tail:
-        prev_block = f"\n[직전 비트 끝부분]\n{prev_tail}\n"
+        prev_block = (
+            f"\n[직전 비트 전체 — 이미 본문에 작성된 부분, 절대 다시 쓰지 마라]\n{prev_tail}\n"
+            f"\n⚠️ 위는 이미 회차에 들어간 본문이다. 위에서 이미 묘사된 사건·장면·대사·장소·인물·물건을 이 비트에서 다시 쓰지 마라.\n"
+            f"- 같은 사건을 두 번 묘사하면 회차가 깨진다.\n"
+            f"- '다음 날 정오', '도서관 안쪽', '포탈 통과', '마린 등장', '거래' 등 위 본문에 이미 등장한 장면을 다시 쓰면 즉시 불합격.\n"
+            f"- 이 비트는 위 본문이 끝난 시점에서 **이어지는 새로운 사건**만 다룬다.\n"
+        )
 
     chapter_overall = ctx.chapter_outline.overall.strip()
 
@@ -98,6 +104,11 @@ def build_beat_prompt(persona, ctx, beat, prev_tail: str, beat_index: int, total
         f"{prev_block}\n"
         f"[현재 비트: {beat_index + 1}/{total_beats} — {beat.name}]\n"
         f"{beat.instruction.strip()}\n\n"
+        f"[비트 사건 범위 절대 룰]\n"
+        f"- 위 instruction의 '이 비트에서 다룰 범위'에 적힌 사건만 묘사한다.\n"
+        f"- '이 비트에서 다루지 말 것' 또는 '직전 비트에서 이미 묘사한 사건' 항목의 사건은 **절대 본문에 쓰지 마라**.\n"
+        f"- 회상·요약·\"어제 그랬던 것처럼\" 같은 우회도 금지. 이전 사건을 다시 언급하면 즉시 불합격이다.\n"
+        f"- 한 회차에 같은 사건을 두 번 묘사하면 그 회차는 폐기 대상이다.\n\n"
         f"[작성 지시 — 한국 웹소설 4대 룰]\n"
         f"\n"
         f"### 룰 1. 주어 반복 금지 + 문장 구조 다양화\n"

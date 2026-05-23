@@ -40,6 +40,8 @@ class NovelContext:
     # 작품 메타에서 로드된 주조연 호명·임계 (반복 검수용)
     main_characters: list[dict] = field(default_factory=list)
     name_limits: dict = field(default_factory=dict)
+    # 위키 발췌 (회차 작성 시 LLM 컨텍스트 주입용)
+    wiki_context: str = ""
 
 
 def load_work_meta(work_id: str, novels_dir: Path) -> dict:
@@ -79,6 +81,16 @@ def load_novel_context(
     def opt(p: Path) -> str:
         return p.read_text(encoding="utf-8") if p.exists() else ""
 
+    # 위키 발췌 (있을 때만)
+    wiki_context = ""
+    try:
+        from ..wiki import fetch_wiki_context
+        wiki_root = novels_dir.parent / "wiki"
+        if (wiki_root / work_id).exists():
+            wiki_context = fetch_wiki_context(wiki_root, work_id, recent_timeline_n=8)
+    except Exception:
+        pass
+
     # 메타에서 main_characters 로드 (회차 검수자가 동적으로 사용)
     meta = load_work_meta(work_id, novels_dir)
     raw_chars = meta.get("main_characters") or []
@@ -114,4 +126,5 @@ def load_novel_context(
         world_state=opt(base / "memory" / "world_state.md"),
         main_characters=main_characters,
         name_limits=name_limits,
+        wiki_context=wiki_context,
     )

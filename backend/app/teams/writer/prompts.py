@@ -51,6 +51,11 @@ def build_context_block(ctx) -> str:
 
     characters_compressed = _compress_characters(ctx.characters)
 
+    wiki_block = ""
+    wc = getattr(ctx, "wiki_context", "")
+    if wc:
+        wiki_block = f"\n{wc}\n"
+
     return (
         f"[세계관 요약]\n{ctx.world_bible.strip()[:300]}\n\n"
         f"[등장인물 요약 — 본문에 인물 소개/등급/직업 묘사 반복 금지]\n{characters_compressed}\n\n"
@@ -58,6 +63,7 @@ def build_context_block(ctx) -> str:
         f"{theme_block}"
         f"{naming_block}"
         f"{summary_block}"
+        f"{wiki_block}"
     )
 
 

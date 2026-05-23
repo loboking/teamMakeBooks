@@ -513,6 +513,30 @@ def _writer_summary(state: PipelineState) -> dict:
     )
     summary_path.write_text(summary, encoding="utf-8")
 
+    # 위키 자동 갱신 — 등장 인물·사건·타임라인
+    try:
+        from ..wiki import detect_characters_in_text, update_wiki_after_chapter
+        wiki_root = settings.project_root / "wiki"
+        if (wiki_root / work_id).exists():
+            candidate_names = [c.get("name", "") for c in getattr(ctx, "main_characters", []) or []]
+            chars_in = detect_characters_in_text(draft, candidate_names)
+            chapter_title = ""
+            try:
+                import json as _json
+                meta_path = settings.novels_dir / work_id / "chapters" / f"ch{chapter_n:03d}_meta.json"
+                if meta_path.exists():
+                    chapter_title = _json.loads(meta_path.read_text(encoding="utf-8")).get("title", "")
+            except Exception:
+                pass
+            update_wiki_after_chapter(
+                wiki_root, work_id,
+                chapter_n=chapter_n, summary=summary,
+                characters_in_chapter=chars_in, slug=chapter_title,
+            )
+            print(f"[wiki] 갱신 완료 — 인물 {len(chars_in)}명, ch{chapter_n:03d} event 기록")
+    except Exception as e:
+        print(f"[wiki] 갱신 실패 (무시): {e}")
+
     log_review_event(
         work_id=work_id,
         chapter_n=chapter_n,

@@ -1,0 +1,212 @@
+{
+  "main": {
+    "id": "c69cc2e9246ab843",
+    "type": "split",
+    "children": [
+      {
+        "id": "072faae9f4de601a",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "1b09c7a372d49434",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "isekai_slowlife_trade_01/events/ch189.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "ch189"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "0d6da10d2bc7121a",
+    "type": "split",
+    "children": [
+      {
+        "id": "a88db978fa2a47d5",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "e8e3ceb0e1812d28",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "파일 탐색기"
+            }
+          },
+          {
+            "id": "e9df90b8053d9cc6",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "검색"
+            }
+          },
+          {
+            "id": "a3150555ac6a8d35",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "북마크"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "ab4a4341fa53ebc0",
+    "type": "split",
+    "children": [
+      {
+        "id": "fc28d894acdb19ec",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "b2670ccb21cc2d0c",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "백링크"
+            }
+          },
+          {
+            "id": "86c9273076976931",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "나가는 링크"
+            }
+          },
+          {
+            "id": "8a86571bdf30e189",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "태그"
+            }
+          },
+          {
+            "id": "925f3286665470b5",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "모든 속성"
+            }
+          },
+          {
+            "id": "e46c1a690eba6264",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "개요"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:빠른 전환기 열기": false,
+      "graph:그래프 뷰 열기": false,
+      "canvas:새 캔버스 만들기": false,
+      "daily-notes:오늘의 일일 노트 열기": false,
+      "templates:템플릿 삽입": false,
+      "command-palette:명령어 팔레트 열기": false,
+      "bases:새 베이스 생성하기": false
+    }
+  },
+  "active": "1b09c7a372d49434",
+  "lastOpenFiles": [
+    "isekai_slowlife_trade_01/events/ch180.md",
+    "isekai_slowlife_trade_01/events/ch172.md",
+    "isekai_slowlife_trade_01/events/ch161.md",
+    "isekai_slowlife_trade_01/events/ch152.md",
+    "isekai_slowlife_trade_01/events/ch225.md",
+    "isekai_slowlife_trade_01/events/ch222.md",
+    "isekai_slowlife_trade_01/events/ch220.md",
+    "isekai_slowlife_trade_01/events/ch216.md",
+    "isekai_slowlife_trade_01/events/ch213.md",
+    "isekai_slowlife_trade_01/events/ch207.md",
+    "isekai_slowlife_trade_01/events/ch206.md",
+    "isekai_slowlife_trade_01/events/ch205.md",
+    "isekai_slowlife_trade_01/events/ch199.md",
+    "isekai_slowlife_trade_01/events/ch198.md",
+    "isekai_slowlife_trade_01/events/ch195.md",
+    "isekai_slowlife_trade_01/events/ch194.md",
+    "isekai_slowlife_trade_01/events/ch188.md",
+    "isekai_slowlife_trade_01/events/ch179.md",
+    "isekai_slowlife_trade_01/events/ch177.md",
+    "isekai_slowlife_trade_01/events/ch175.md",
+    "isekai_slowlife_trade_01/events/ch174.md",
+    "isekai_slowlife_trade_01/events/ch173.md",
+    "isekai_slowlife_trade_01/events/ch170.md",
+    "isekai_slowlife_trade_01/events/ch163.md",
+    "isekai_slowlife_trade_01/events/ch158.md",
+    "isekai_slowlife_trade_01/events/ch155.md"
+  ]
+}

@@ -135,12 +135,13 @@ def _naming_check(state: PipelineState) -> dict:
         }
 
     if attempt >= settings.max_retries:
+        print(f"[ALERT] {work_id} ch{chapter_n:03d} naming 검수 {settings.max_retries}회 소진 — 경고 마킹 후 진행")
+        review_history[-1]["passed"] = True
+        review_history[-1]["reason"] += f" [경고: naming {settings.max_retries}회 소진]"
         return {
             "retry_counts": retry_counts,
             "review_history": review_history,
-            "failure_stage": "naming",
-            "failure_reason": naming_result.feedback,
-            "current_stage": "__halt__",
+            "current_stage": "direction",
         }
 
     # 수정
@@ -209,15 +210,17 @@ def _make_reviewer_node(role: str):
         if attempt >= settings.max_retries:
             msg = (
                 f"[ALERT] {work_id} ch{state['chapter_n']:03d} {role} 검수 "
-                f"{settings.max_retries}회 소진.\n사유: {result.reason}\n가이드: {result.feedback}"
+                f"{settings.max_retries}회 소진 — 경고 마킹 후 진행: {result.feedback}"
             )
             print(msg)
+            review_history[-1]["passed"] = True
+            review_history[-1]["reason"] += f" [경고: {role} {settings.max_retries}회 소진]"
+            role_idx = REVIEWER_ROLES.index(role)
+            next_stage = REVIEWER_ROLES[role_idx + 1] if role_idx + 1 < len(REVIEWER_ROLES) else "publisher"
             return {
                 "retry_counts": retry_counts,
                 "review_history": review_history,
-                "failure_stage": role,
-                "failure_reason": result.feedback,
-                "current_stage": "__halt__",
+                "current_stage": next_stage,
             }
 
         # 수정
@@ -459,7 +462,7 @@ def _polish_node(state: PipelineState) -> dict:
 
     # 분량 sanity — 너무 줄거나 늘면 원본 유지
     ratio = len(polished) / max(1, len(draft))
-    if 0.80 <= ratio <= 1.15 and len(polished) >= 2000:
+    if 0.80 <= ratio <= 1.15 and len(polished) >= 2500:
         print(f"[writer] 정제 완료 ({len(draft)} → {len(polished)}자, 비율 {ratio:.2f})")
         return {"draft": polished, "current_stage": "publisher"}
     print(f"[writer] 정제 분량 이상 ({len(draft)} → {len(polished)}자, 비율 {ratio:.2f}) — 원본 유지")

@@ -104,8 +104,8 @@ BEAT_EXPAND_SCHEMA: dict = {
     "properties": {
         "beats": {
             "type": "array",
-            "minItems": 2,
-            "maxItems": 2,
+            "minItems": 3,
+            "maxItems": 3,
             "items": {
                 "type": "object",
                 "properties": {
@@ -687,7 +687,15 @@ def build_characters_prompt(concept: dict, ending: dict, skeleton: list[dict], *
         "[줄거리 핵심 회차]\n"
         f"{_format_skeleton_summary(skeleton, total)}\n\n"
         "[과제]\n"
-        "작품의 주조연 5~8명을 정의한다. 회차 작가는 이 정의를 헌법으로 삼아 본문을 쓴다.\n"
+        "작품의 주조연·단역 **10~15명**을 정의한다. 회차 작가는 이 정의를 헌법으로 삼아 본문을 쓴다.\n"
+        "장편(100화+)은 인물이 5명이면 매 회차 같은 얼굴만 반복되어 독자가 지루해진다.\n"
+        "**인물 배분 가이드** (작품 무대에 맞춰 모두 충당):\n"
+        "  · 주인공 1명\n"
+        "  · 핵심 조력자 2~3명 (사이드킥·멘토 등)\n"
+        "  · 가족·일상 인물 2~3명 (현실 측 일상 회차 보충)\n"
+        "  · 친구·동료 2~3명 (학교·직장·길드 등)\n"
+        "  · 주적·부적 1~2명 (메인 빌런 + 행동대)\n"
+        "  · 단역·이벤트 인물 1~3명 (특정 회차에서 강한 인상)\n"
         "각 인물:\n"
         "- name: 한국 이름. 컨셉의 protagonist 포함.\n"
         "- role: '주인공'/'조력자'/'적대자'/'조연' 중 하나.\n"

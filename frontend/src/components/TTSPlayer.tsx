@@ -1,12 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 
 type Props = {
   text: string;
 };
 
 const RATE_OPTIONS = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+// Chrome은 ~15초마다 speechSynthesis를 자동 멈춤 → 주기적 resume으로 방지
+const CHROME_KEEPALIVE_MS = 10000;
+// 한 utterance당 최대 글자 수 (너무 길면 브라우저가 멈춤)
+const MAX_CHUNK = 3000;
 
 export default function TTSPlayer({ text }: Props) {
   const [supported, setSupported] = useState(false);
@@ -18,16 +22,19 @@ export default function TTSPlayer({ text }: Props) {
   const [open, setOpen] = useState(false);
 
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const keepaliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const chunksRef = useRef<string[]>([]);
+  const chunkIdxRef = useRef(0);
 
   useEffect(() => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-      setSupported(false);
       return;
     }
     setSupported(true);
 
     const loadVoices = () => {
       const all = window.speechSynthesis.getVoices();
+      if (all.length === 0) return;
       const ko = all.filter((v) => v.lang?.startsWith("ko"));
       setVoices(ko.length > 0 ? ko : all);
       const stored = localStorage.getItem("tts.voiceURI");
@@ -47,6 +54,7 @@ export default function TTSPlayer({ text }: Props) {
 
     return () => {
       window.speechSynthesis.cancel();
+      if (keepaliveRef.current) clearInterval(keepaliveRef.current);
     };
   }, []);
 
@@ -59,7 +67,6 @@ export default function TTSPlayer({ text }: Props) {
   }, [rate]);
 
   function plainText(markdown: string): string {
-    // 간단한 markdown → plain text. AI 배지(blockquote), 제목, 코드블록 제거.
     return markdown
       .replace(/```[\s\S]*?```/g, "")
       .replace(/^>.*$/gm, "")
@@ -71,6 +78,53 @@ export default function TTSPlayer({ text }: Props) {
       .trim();
   }
 
+  function splitChunks(text: string): string[] {
+    if (text.length <= MAX_CHUNK) return [text];
+    const chunks: string[] = [];
+    let i = 0;
+    while (i < text.length) {
+      let end = Math.min(i + MAX_CHUNK, text.length);
+      // 문장 경계에서 자르기
+      if (end < text.length) {
+        const lastPeriod = text.lastIndexOf(".", end);
+        const lastNewline = text.lastIndexOf("\n", end);
+        const cutAt = Math.max(lastPeriod, lastNewline);
+        if (cutAt > i) end = cutAt + 1;
+      }
+      chunks.push(text.slice(i, end));
+      i = end;
+    }
+    return chunks;
+  }
+
+  const speakNextChunk = useCallback(() => {
+    const synth = window.speechSynthesis;
+    if (chunkIdxRef.current >= chunksRef.current.length) {
+      // 모든 청크 완료
+      setPlaying(false);
+      setPaused(false);
+      if (keepaliveRef.current) clearInterval(keepaliveRef.current);
+      return;
+    }
+    const chunk = chunksRef.current[chunkIdxRef.current];
+    const u = new SpeechSynthesisUtterance(chunk);
+    const v = voices.find((vv) => vv.voiceURI === voiceURI);
+    if (v) u.voice = v;
+    u.rate = rate;
+    u.lang = v?.lang ?? "ko-KR";
+    u.onend = () => {
+      chunkIdxRef.current++;
+      speakNextChunk();
+    };
+    u.onerror = () => {
+      setPlaying(false);
+      setPaused(false);
+      if (keepaliveRef.current) clearInterval(keepaliveRef.current);
+    };
+    utteranceRef.current = u;
+    synth.speak(u);
+  }, [voices, voiceURI, rate]);
+
   function speak() {
     if (!supported) return;
     const synth = window.speechSynthesis;
@@ -81,23 +135,22 @@ export default function TTSPlayer({ text }: Props) {
       return;
     }
     synth.cancel();
-    const u = new SpeechSynthesisUtterance(plainText(text));
-    const v = voices.find((vv) => vv.voiceURI === voiceURI);
-    if (v) u.voice = v;
-    u.rate = rate;
-    u.lang = v?.lang ?? "ko-KR";
-    u.onend = () => {
-      setPlaying(false);
-      setPaused(false);
-    };
-    u.onerror = () => {
-      setPlaying(false);
-      setPaused(false);
-    };
-    utteranceRef.current = u;
-    synth.speak(u);
+    const plain = plainText(text);
+    chunksRef.current = splitChunks(plain);
+    chunkIdxRef.current = 0;
+
+    speakNextChunk();
     setPlaying(true);
     setPaused(false);
+
+    // Chrome keepalive: 주기적 resume
+    if (keepaliveRef.current) clearInterval(keepaliveRef.current);
+    keepaliveRef.current = setInterval(() => {
+      if (synth.speaking && !synth.paused) {
+        synth.pause();
+        synth.resume();
+      }
+    }, CHROME_KEEPALIVE_MS);
   }
 
   function pause() {
@@ -110,8 +163,11 @@ export default function TTSPlayer({ text }: Props) {
   function stop() {
     if (!supported) return;
     window.speechSynthesis.cancel();
+    if (keepaliveRef.current) clearInterval(keepaliveRef.current);
     setPlaying(false);
     setPaused(false);
+    chunksRef.current = [];
+    chunkIdxRef.current = 0;
   }
 
   if (!supported) return null;

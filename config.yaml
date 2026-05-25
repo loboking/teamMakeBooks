@@ -34,7 +34,7 @@ pipeline:
 
 writer:
   beat_temperature: 0.85
-  beat_num_predict: 4000
+  beat_num_predict: 6000
 
 reviewer:
   temperature: 0.2

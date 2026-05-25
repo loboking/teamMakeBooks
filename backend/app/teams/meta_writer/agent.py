@@ -545,20 +545,30 @@ class MetaWriterAgent:
         data = _parse_json_object(resp.text)
         beats_raw = data.get("beats") or []
 
-        # 보정: 정확히 2개 강제 (intro+climax), name 정규화
-        defaults = ["intro", "climax"]
+        # 보정: 정확히 3개 강제 (intro+development+climax), name 정규화
+        defaults = ["intro", "development", "climax"]
         beats: list[dict] = []
-        for i in range(2):
+        for i in range(3):
             src = beats_raw[i] if i < len(beats_raw) and isinstance(beats_raw[i], dict) else {}
             name = str(src.get("name", "")).strip() or defaults[i]
             instruction = str(src.get("instruction", "")).strip()
             beats.append({"name": name, "instruction": instruction})
 
-        if any(len(b["instruction"]) < 200 for b in beats):
-            raise LLMProviderError(
-                f"ch{int(chapter.get('chapter_n', 0)):03d} 비트 instruction 길이 부족 "
-                f"(min={min(len(b['instruction']) for b in beats)}자). 200자 미만."
-            )
+        # 부족한 instruction은 chapter overall로 폴백 (회차 본문 생성은 가능해야 함)
+        overall_fallback = str(chapter.get("overall", "")).strip()
+        role_labels = [
+            "비트 도입 — 회차 시작부 (분량 1,200자+, 한국 웹소설 톤)",
+            "비트 전개 — 회차 중간부 긴장감 상승 (분량 1,200자+)",
+            "비트 마무리 — 회차 climax + 후크 (분량 1,200자+)",
+        ]
+        for i, b in enumerate(beats):
+            if len(b["instruction"]) < 30:
+                b["instruction"] = (
+                    f"{role_labels[i]}\n\n"
+                    f"이 회차 줄거리:\n{overall_fallback}\n\n"
+                    "위 줄거리를 한국 웹소설 톤으로 본문 1,200자+ 작성. "
+                    "직전 비트와 사건 중복 금지. 시각·청각·촉각 묘사 포함. 대사 1~2개."
+                )
 
         return {
             "chapter_n": int(chapter.get("chapter_n", 0)),

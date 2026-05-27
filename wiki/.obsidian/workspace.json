@@ -11,14 +11,10 @@
             "id": "1b09c7a372d49434",
             "type": "leaf",
             "state": {
-              "type": "markdown",
-              "state": {
-                "file": "isekai_slowlife_trade_01/events/ch189.md",
-                "mode": "source",
-                "source": false
-              },
+              "type": "empty",
+              "state": {},
               "icon": "lucide-file",
-              "title": "ch189"
+              "title": "새 탭"
             }
           }
         ]
@@ -182,31 +178,31 @@
   },
   "active": "1b09c7a372d49434",
   "lastOpenFiles": [
-    "isekai_slowlife_trade_01/events/ch180.md",
-    "isekai_slowlife_trade_01/events/ch172.md",
-    "isekai_slowlife_trade_01/events/ch161.md",
-    "isekai_slowlife_trade_01/events/ch152.md",
-    "isekai_slowlife_trade_01/events/ch225.md",
-    "isekai_slowlife_trade_01/events/ch222.md",
-    "isekai_slowlife_trade_01/events/ch220.md",
-    "isekai_slowlife_trade_01/events/ch216.md",
-    "isekai_slowlife_trade_01/events/ch213.md",
-    "isekai_slowlife_trade_01/events/ch207.md",
-    "isekai_slowlife_trade_01/events/ch206.md",
-    "isekai_slowlife_trade_01/events/ch205.md",
-    "isekai_slowlife_trade_01/events/ch199.md",
-    "isekai_slowlife_trade_01/events/ch198.md",
-    "isekai_slowlife_trade_01/events/ch195.md",
-    "isekai_slowlife_trade_01/events/ch194.md",
-    "isekai_slowlife_trade_01/events/ch188.md",
-    "isekai_slowlife_trade_01/events/ch179.md",
-    "isekai_slowlife_trade_01/events/ch177.md",
-    "isekai_slowlife_trade_01/events/ch175.md",
-    "isekai_slowlife_trade_01/events/ch174.md",
-    "isekai_slowlife_trade_01/events/ch173.md",
-    "isekai_slowlife_trade_01/events/ch170.md",
-    "isekai_slowlife_trade_01/events/ch163.md",
-    "isekai_slowlife_trade_01/events/ch158.md",
-    "isekai_slowlife_trade_01/events/ch155.md"
+    "isekai_slowlife_trade_01/events/ch010.md",
+    "isekai_slowlife_trade_01/events/ch009.md",
+    "isekai_slowlife_trade_01/events/ch007.md",
+    "isekai_slowlife_trade_01/events/ch006.md",
+    "isekai_slowlife_trade_01/events/ch004.md",
+    "isekai_slowlife_trade_01/events/ch005.md",
+    "isekai_slowlife_trade_01/events/ch001.md",
+    "isekai_slowlife_trade_01/events/ch008.md",
+    "isekai_slowlife_trade_01/events/ch003.md",
+    "isekai_slowlife_trade_01/timeline.md",
+    "isekai_slowlife_trade_01/events/ch002.md",
+    "isekai_slowlife_trade_01/events/ch189.md",
+    "isekai_slowlife_trade_01/events/ch223.md",
+    "isekai_slowlife_trade_01/events/ch221.md",
+    "isekai_slowlife_trade_01/events/ch210.md",
+    "isekai_slowlife_trade_01/events/ch193.md",
+    "isekai_slowlife_trade_01/events/ch191.md",
+    "isekai_slowlife_trade_01/events/ch186.md",
+    "isekai_slowlife_trade_01/events/ch171.md",
+    "isekai_slowlife_trade_01/events/ch160.md",
+    "isekai_slowlife_trade_01/events/ch218.md",
+    "isekai_slowlife_trade_01/events/ch204.md",
+    "isekai_slowlife_trade_01/events/ch197.md",
+    "isekai_slowlife_trade_01/events/ch190.md",
+    "isekai_slowlife_trade_01/events/ch184.md",
+    "isekai_slowlife_trade_01/events/ch180.md"
   ]
 }

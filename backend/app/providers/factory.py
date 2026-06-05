@@ -15,7 +15,13 @@ def get_provider(model_key: str, settings) -> LLMProvider:
 
     provider_name, model_name = model_key.split(":", maxsplit=1)
     if provider_name == "ollama":
-        return OllamaProvider(model_name, settings.ollama_base_url)
+        ollama_cfg = settings.config.get("ollama", {})
+        return OllamaProvider(
+            model_name,
+            settings.ollama_base_url,
+            repetition_penalty=float(ollama_cfg.get("repetition_penalty", 1.15)),
+            top_p=float(ollama_cfg.get("top_p", 0.85)),
+        )
     if provider_name == "gemini":
         # PoC에선 미사용. 키 들어오면 아래 분기 켜기.
         raise NotImplementedError("Gemini provider는 v0.2에서 활성화 (키 확보 후)")

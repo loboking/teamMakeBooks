@@ -14,10 +14,20 @@ from .base import LLMProvider, LLMProviderError, LLMResponse
 
 
 class OllamaProvider(LLMProvider):
-    def __init__(self, model_id: str, base_url: str, *, timeout: int = 1800):
+    def __init__(
+        self,
+        model_id: str,
+        base_url: str,
+        *,
+        timeout: int = 1800,
+        repetition_penalty: float = 1.15,
+        top_p: float = 0.85,
+    ):
         self._model_id = model_id
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
+        self._repetition_penalty = repetition_penalty
+        self._top_p = top_p
 
     @property
     def model_id(self) -> str:
@@ -38,6 +48,8 @@ class OllamaProvider(LLMProvider):
             "options": {
                 "temperature": temperature,
                 "num_predict": max_tokens,
+                "repeat_penalty": self._repetition_penalty,
+                "top_p": self._top_p,
                 # gemma4 계열은 128k 컨텍스트 지원. 기본 4096이라 long prompt에서 빈 응답 발생.
                 # 32k로 충분 (4기둥 + 본문 + 학습 예시 합계 약 15k 토큰 이내).
                 "num_ctx": 32768,

@@ -20,139 +20,162 @@
       "name": "차하린",
       "short": "하린",
       "limit_full": 5,
-      "limit_short": 35
+      "limit_short": 35,
+      "gender": "female"
     },
     {
       "name": "마린",
       "short": "마린",
       "limit_full": 20,
-      "limit_short": 0
+      "limit_short": 0,
+      "gender": "female"
     },
     {
       "name": "한도영",
       "short": "한도영",
       "limit_full": 10,
-      "limit_short": 0
+      "limit_short": 0,
+      "gender": "male"
     },
     {
       "name": "도원 영감",
       "short": "도원 영감",
       "limit_full": 10,
-      "limit_short": 0
+      "limit_short": 0,
+      "gender": "male"
     },
     {
       "name": "좌선장",
       "short": "좌선장",
       "limit_full": 10,
-      "limit_short": 0
+      "limit_short": 0,
+      "gender": "male"
     },
     {
       "name": "차어머니",
       "short": "엄마",
       "limit_full": 8,
-      "limit_short": 12
+      "limit_short": 12,
+      "gender": "female"
     },
     {
       "name": "차아버지",
       "short": "아빠",
       "limit_full": 8,
-      "limit_short": 12
+      "limit_short": 12,
+      "gender": "male"
     },
     {
       "name": "김지원",
       "short": "지원",
       "limit_full": 8,
-      "limit_short": 15
+      "limit_short": 15,
+      "gender": "female"
     },
     {
       "name": "테오",
       "short": "테오",
       "limit_full": 15,
-      "limit_short": 0
+      "limit_short": 0,
+      "gender": "male"
     },
     {
       "name": "루나",
       "short": "루나",
       "limit_full": 10,
-      "limit_short": 0
+      "limit_short": 0,
+      "gender": "female"
     },
     {
       "name": "흑랑",
       "short": "흑랑",
       "limit_full": 10,
-      "limit_short": 0
+      "limit_short": 0,
+      "gender": "male"
     },
     {
       "name": "카엘",
       "short": "카엘",
       "limit_full": 10,
-      "limit_short": 0
+      "limit_short": 0,
+      "gender": "male"
     },
     {
       "name": "이마을촌장",
       "short": "촌장",
       "limit_full": 6,
-      "limit_short": 10
+      "limit_short": 10,
+      "gender": "male"
     },
     {
       "name": "강선생",
       "short": "강선생",
       "limit_full": 6,
-      "limit_short": 0
+      "limit_short": 0,
+      "gender": "male"
     },
     {
       "name": "윤채현",
       "short": "채현",
       "limit_full": 6,
-      "limit_short": 10
+      "limit_short": 10,
+      "gender": "female"
     },
     {
       "name": "정수아",
       "short": "수아",
       "limit_full": 6,
-      "limit_short": 10
+      "limit_short": 10,
+      "gender": "female"
     },
     {
       "name": "라온",
       "short": "라온",
       "limit_full": 12,
-      "limit_short": 0
+      "limit_short": 0,
+      "gender": "male"
     },
     {
       "name": "미아",
       "short": "미아",
       "limit_full": 10,
-      "limit_short": 0
+      "limit_short": 0,
+      "gender": "female"
     },
     {
       "name": "한별",
       "short": "한별",
       "limit_full": 8,
-      "limit_short": 0
+      "limit_short": 0,
+      "gender": "female"
     },
     {
       "name": "적영",
       "short": "적영",
       "limit_full": 10,
-      "limit_short": 0
+      "limit_short": 0,
+      "gender": "male"
     },
     {
       "name": "솔",
       "short": "솔",
       "limit_full": 8,
-      "limit_short": 0
+      "limit_short": 0,
+      "gender": "female"
     },
     {
       "name": "박지훈",
       "short": "지훈",
       "limit_full": 6,
-      "limit_short": 10
+      "limit_short": 10,
+      "gender": "male"
     },
     {
       "name": "한도혁",
       "short": "도혁",
       "limit_full": 8,
-      "limit_short": 12
+      "limit_short": 12,
+      "gender": "male"
     }
   ],
   "copyright": "© 2026 teamMakeBooks"

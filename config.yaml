@@ -28,6 +28,10 @@ teams:
     outline_consistency:
       model: "ollama:gemma4:e2b"
 
+ollama:
+  repetition_penalty: 1.15
+  top_p: 0.85
+
 pipeline:
   max_retries: 3
   recent_summaries_n: 3

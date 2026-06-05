@@ -13,8 +13,11 @@ from ..memory import load_novel_context, load_persona, load_work_meta
 from ..providers import get_provider
 from ..teams.publisher import PublishResult, PublisherAgent
 from ..teams.reviewer import ReviewerAgent, ReviewResult
+from ..teams.reviewer.dedup import remove_duplicates
 from ..teams.reviewer.naming_checker import run_naming_check
+from ..teams.reviewer.pronoun_fixer import fix_gender_pronouns
 from ..teams.reviewer.prompts import _count_repetition_patterns, _format_count_report
+from ..teams.reviewer.subject_rotator import rotate_subjects
 from ..teams.writer import WriterAgent
 from ..utils.alert import send_alert
 from ..utils.logger import log_call, log_review_event
@@ -301,9 +304,9 @@ def _repetition_review_node(state: PipelineState) -> dict:
         for verb, c2 in c.get("동작동사", {}).items():
             if c2 > 4:
                 return False, f"동사 '{verb}'={c2}>4"
-        # 연속주어 ≤8
-        if c.get("연속주어", 0) > 8:
-            return False, f"연속주어={c['연속주어']}>8"
+        # 연속주어 ≤6
+        if c.get("연속주어", 0) > 6:
+            return False, f"연속주어={c['연속주어']}>6"
         # 등급직업은 헌터물 등에서만 의미 — 한계 ≤3
         for kw, c2 in c.get("등급직업", {}).items():
             if c2 > 3:
@@ -440,6 +443,53 @@ def _repetition_review_node(state: PipelineState) -> dict:
         "review_history": review_history,
         "current_stage": "repetition",
     }
+
+
+def _pronoun_fix_node(state: PipelineState) -> dict:
+    """결정론적 3단계 정제 — dedup → pronoun → subject rotation."""
+    draft = state["draft"]
+    work_id = state["work_id"]
+    settings: Settings = state["settings"]
+
+    work_meta = load_work_meta(work_id, settings.novels_dir)
+    characters = work_meta.get("main_characters", [])
+    current = draft
+
+    # Step 1: 중복 문단·반복 구문 제거
+    dedup_result = remove_duplicates(current)
+    if dedup_result.removed_paragraphs > 0 or dedup_result.removed_phrases > 0:
+        current = dedup_result.fixed
+        print(f"[dedup] 문단 {dedup_result.removed_paragraphs}개 + 구문 {dedup_result.removed_phrases}개 제거")
+    else:
+        print("[dedup] 중복 없음")
+
+    # Step 2: 성별 대명사 치환
+    if characters:
+        pronoun_result = fix_gender_pronouns(current, characters)
+        if pronoun_result.fix_count > 0:
+            current = pronoun_result.fixed
+            print(f"[pronoun_fix] {pronoun_result.fix_count}건 치환")
+            for d in pronoun_result.details[:3]:
+                print(f"  - {d}")
+            if len(pronoun_result.details) > 3:
+                print(f"  ... 외 {len(pronoun_result.details) - 3}건")
+        else:
+            print("[pronoun_fix] 치환 없음")
+
+    # Step 3: 연속 주어 회전
+    if characters:
+        subject_result = rotate_subjects(current, characters)
+        if subject_result.fix_count > 0:
+            current = subject_result.fixed
+            print(f"[subject_rotate] {subject_result.fix_count}건 회전")
+            for d in subject_result.details[:3]:
+                print(f"  - {d}")
+            if len(subject_result.details) > 3:
+                print(f"  ... 외 {len(subject_result.details) - 3}건")
+        else:
+            print("[subject_rotate] 회전 불필요")
+
+    return {"draft": current, "current_stage": "polish_flow"}
 
 
 def _polish_node(state: PipelineState) -> dict:
@@ -667,6 +717,7 @@ def _build_graph() -> StateGraph:
     g.add_node("reviewer_character", _make_reviewer_node("character"))
     g.add_node("reviewer_quality", _make_reviewer_node("quality"))
     g.add_node("reviewer_repetition", _repetition_review_node)
+    g.add_node("pronoun_fix", _pronoun_fix_node)
     g.add_node("polish_flow", _polish_node)
     g.add_node("publisher", _publisher_node)
     g.add_node("writer_summary", _writer_summary)
@@ -702,10 +753,11 @@ def _build_graph() -> StateGraph:
     })
     g.add_conditional_edges("reviewer_repetition", _route_after_repetition, {
         "reviewer_repetition": "reviewer_repetition",
-        "publisher": "polish_flow",
+        "publisher": "pronoun_fix",
         "alert_and_halt": "alert_and_halt",
     })
 
+    g.add_edge("pronoun_fix", "polish_flow")
     g.add_edge("polish_flow", "publisher")
     g.add_edge("publisher", "writer_summary")
     g.add_edge("writer_summary", END)

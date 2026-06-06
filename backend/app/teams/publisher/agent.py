@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -68,10 +69,15 @@ class PublisherAgent:
             one_line_summary = "(요약 생성 실패)"
 
         # 본문에 AI 배지 + 제목 삽입
+        # LLM 초안에 임의 제목(# N화. xxx)이 포함될 수 있으므로 먼저 제거
+        _title_re = re.compile(r'^#\s*\d+화\.\s*.+$', re.MULTILINE)
+        lines = draft.strip().split("\n")
+        cleaned_lines = [l for l in lines if not _title_re.match(l)]
+        cleaned = "\n".join(cleaned_lines).strip()
         body = (
             f"{AI_BADGE}\n\n"
             f"# {ctx.current_chapter_n}화. {title}\n\n"
-            f"{draft.strip()}\n"
+            f"{cleaned}\n"
         )
 
         chapters_dir = novels_dir / work_id / "chapters"

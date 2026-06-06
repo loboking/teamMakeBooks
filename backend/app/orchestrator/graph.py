@@ -514,9 +514,19 @@ def _polish_node(state: PipelineState) -> dict:
     ratio = len(polished) / max(1, len(draft))
     if 0.80 <= ratio <= 1.15 and len(polished) >= 2500:
         print(f"[writer] 정제 완료 ({len(draft)} → {len(polished)}자, 비율 {ratio:.2f})")
-        return {"draft": polished, "current_stage": "publisher"}
-    print(f"[writer] 정제 분량 이상 ({len(draft)} → {len(polished)}자, 비율 {ratio:.2f}) — 원본 유지")
-    return {"current_stage": "publisher"}
+    else:
+        print(f"[writer] 정제 분량 이상 ({len(draft)} → {len(polished)}자, 비율 {ratio:.2f}) — 원본 유지")
+        polished = draft
+
+    # polish_flow(LLM)이 주어 회전을 망칠 수 있으므로 subject_rotate 재실행
+    work_meta = load_work_meta(work_id, settings.novels_dir)
+    characters = work_meta.get("main_characters", [])
+    if characters:
+        post_result = rotate_subjects(polished, characters)
+        if post_result.fix_count > 0:
+            polished = post_result.fixed
+            print(f"[subject_rotate:post] polish 후 재정제 {post_result.fix_count}건")
+    return {"draft": polished, "current_stage": "publisher"}
 
 
 def _publisher_node(state: PipelineState) -> dict:

@@ -73,7 +73,23 @@ def _find_nearest_character(
     text_up_to_point: str,
     name_index: dict[str, str],
 ) -> str | None:
-    """텍스트에서 가장 마지막에 등장한 캐릭터의 gender 반환."""
+    """텍스트에서 가장 마지막에 등장한 캐릭터/성별 명사의 gender 반환.
+
+    일반 성별 명사(남자, 여자, 사람)도 선행사로 인식하여,
+    '남자가 앉아 있었다. 그녀는~' 같은 오류를 방지.
+    """
+    # 일반 성별 명사 매칭
+    gender_hints: dict[str, str] = {
+        "남자": "male", "남성": "male", "청년": "male",
+        "여자": "female", "여성": "female", "소녀": "female",
+    }
+    # 가장 마지막 줄에서 성별 명사를 찾기
+    last_line = text_up_to_point.strip().split('\n')[-1] if text_up_to_point.strip() else ""
+    for hint_word, gender in gender_hints.items():
+        if hint_word in last_line:
+            return gender
+
+    # 캐릭터 이름에서 가장 가까운 것
     last_pos = -1
     last_gender: str | None = None
     for name, gender in name_index.items():

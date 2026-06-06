@@ -233,12 +233,13 @@ REVIEWER_DEFS: dict[str, dict[str, str]] = {
         "instruction": """사전 카운트 결과를 기반으로 반복 위반 여부를 판정한다.
 창의적 평론·문장력·흡입력·서사 평가는 절대 금지. 카운트와 한계 비교만 한다.
 
-[판정 기준 — 하나라도 초과하면 반려]
+[판정 기준 — 하나라도 초과/미달하면 반려]
 1. 서술 '이준' > 15회 → 반려
 2. 서술 '강이준' > 5회 → 반려
 3. 동일 행동 동사 > 3회/동사 → 반려
 4. 같은 주어로 3문장+ 연속 시작 → 반려
 5. 캐릭터 등급/직업 묘사 > 2회/인물 → 반려
+6. 대사(큰따옴표로 감싸인 발화) < 5개 → 반려. 대사는 캐릭터를 살리는 핵심 수단이다.
 
 [반려 시 수정가이드 규칙]
 - 초과 항목과 줄여야 할 횟수를 명시
@@ -255,7 +256,11 @@ REVIEWER_DEFS: dict[str, dict[str, str]] = {
 
 [학습 예시 3 — 반려 (동작동사 초과)]
 사전 카운트: '바라보았다' 4회 ⚠️
-출력: {"판정":"반려","점수":4,"이유":"바라보았다 4회(한계3 초과)","수정가이드":"바라보았다 1회 이상을 응시했다/시선을 주었다/주목했다로 교체"}""",
+출력: {"판정":"반려","점수":4,"이유":"바라보았다 4회(한계3 초과)","수정가이드":"바라보았다 1회 이상을 응시했다/시선을 주었다/주목했다로 교체"}
+
+[학습 예시 4 — 반려 (대사 부족)]
+사전 카운트: 대사 2개 ⚠️
+출력: {"판정":"반려","점수":3,"이유":"대사 2개(한계5 미달)","수정가이드":"회차 전체에 대사를 최소 3개 더 추가. 서술로 요약된 캐릭터 감정·판단을 큰따옴표 대사로 바꿔라"}""",
     },
 }
 
@@ -346,6 +351,10 @@ def _count_repetition_patterns(draft: str, names: list[dict]) -> dict:
             grades[kw] = c
     counts['등급직업'] = grades
 
+    # 대사 카운트
+    dialogues = re.findall(r'"[^"]*"', draft)
+    counts['대사'] = len(dialogues)
+
     return counts
 
 
@@ -372,6 +381,8 @@ def _format_count_report(counts: dict, name_limits: dict | None = None) -> str:
     lines.append(f"연속 주어 최대: {cs}문장 (한계 6) {'⚠️ 초과' if cs > 6 else '✓'}")
     for kw, c in sorted(counts.get('등급직업', {}).items(), key=lambda x: -x[1]):
         lines.append(f"'{kw}': {c}회 (한계 2) {'⚠️ 초과' if c > 2 else '✓'}")
+    dlg = counts.get('대사', 0)
+    lines.append(f"대사: {dlg}개 (한계 5) {'⚠️ 미달' if dlg < 5 else '✓'}")
     return '\n'.join(lines)
 
 

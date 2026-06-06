@@ -108,13 +108,26 @@ def _get_subject_pattern(name_map: dict[str, str]) -> re.Pattern:
     return re.compile(rf"^(\s*)((?:{'|'.join(escaped)})(?:은|는|이|가|을|를|의|에게|와|과))\s")
 
 
+def _build_limit_map(characters: list[dict]) -> dict[str, int]:
+    """이름/short별 회차 내 허용 한도 (meta.json limit_* 필드 반영)."""
+    limits: dict[str, int] = {}
+    for c in characters:
+        full = str(c.get("name", "")).strip()
+        short = str(c.get("short", "")).strip()
+        limit_full = c.get("limit_full", 20)
+        limit_short = c.get("limit_short", 0)
+        if full and limit_full:
+            limits[full] = limit_full
+        if short and short != full and limit_short:
+            limits[short] = limit_short
+    return limits
+
+
 def rotate_subjects(
     draft: str,
     characters: list[dict],
     *,
     max_consecutive: int = 2,
-    max_per_paragraph: int = 3,
-    max_per_chapter: int = 5,
 ) -> SubjectFixResult:
     """본문에서 연속 주어와 이름 과다를 결정론적으로 회전.
 
@@ -123,13 +136,9 @@ def rotate_subjects(
     draft : str
         정제할 본문
     characters : list[dict]
-        meta.json의 main_characters (gender 필드 필요)
+        meta.json의 main_characters (gender, limit_full, limit_short 필드)
     max_consecutive : int
         같은 주어 연속 허용 최대 (기본 2)
-    max_per_paragraph : int
-        한 문단 내 같은 이름 최대 (기본 3)
-    max_per_chapter : int
-        회차 전체에서 풀네임 허용 최대 (기본 5)
 
     Returns
     -------
@@ -138,14 +147,14 @@ def rotate_subjects(
     name_map = _build_name_pronoun_map(characters)
     if not name_map:
         return SubjectFixResult(original=draft, fixed=draft, fix_count=0, details=[])
+    short_map = _build_short_map(characters)
+    limit_map = _build_limit_map(characters)
 
     # 1) 대사 마스킹
     masked, placeholders = _mask_dialogues(draft)
 
-    # 2) 줄 단위로 순회하되, 각 줄 내에서 문장 분리 후 연속 주어 검사
-    #    (문단 경계 무시 — 연속 카운트는 줄을 넘어서도 이어짐)
+    # 2) 전체 본문을 한 흐름으로 처리 — 빈 줄/단락 경계에서 카운트 리셋하지 않음
     subject_re = _get_subject_pattern(name_map)
-    short_map = _build_short_map(characters)
     fixes = 0
     details: list[str] = []
 
@@ -157,8 +166,7 @@ def rotate_subjects(
         stripped = line.strip()
         if not stripped:
             fixed_lines.append(line)
-            prev_subject = None
-            consecutive_count = 0
+            # 빈 줄에서는 카운트 유지 — 단락 경계를 넘는 연속 주어를 잡기 위해
             continue
 
         # 줄 내 문장 분리
@@ -206,26 +214,34 @@ def rotate_subjects(
 
     fixed_masked = "\n".join(fixed_lines)
 
-    # 3) 회차 전체 이름 카운트 → 과다분 short 또는 대명사로 교체
-    for name, pronoun in name_map.items():
+    # 3) 회차 전체 이름/short 카운트 → meta.json limit_* 한도 초과분 대명사로 교체
+    #    limit_map: {"차하린": 5, "하린": 35, "마린": 20, ...}
+    all_subjects = list(name_map.keys()) + list(short_map.keys())
+    for name in all_subjects:
         if len(name) < 2:
             continue
+        limit = limit_map.get(name)
+        pronoun = name_map.get(name, "그")
         name_pattern = re.compile(re.escape(name) + r'(은|는|이|가|을|를|의|에게|와|과)')
         occurrences = list(name_pattern.finditer(fixed_masked))
-        # 역순 교체 (위치 어긋남 방지)
+        if not limit or len(occurrences) <= limit:
+            continue
+        # 초과분을 대명사로 교체 (short가 있으면 short 먼저, 그 다음 대명사 교체)
         for occ in reversed(occurrences):
-            if len(occurrences) <= max_per_chapter:
+            if len(occurrences) <= limit:
                 break
             old = occ.group()
-            # short가 있으면 short로 교체 (참조 모호 방지)
+            # 교체 순서: short → 대명사 → 주어 생략 (반복 패턴 회피)
             short_name = short_map.get(name)
             if short_name:
                 new = _adjust_particle(name, short_name, old)
+                replacement_name = short_name
             else:
                 new = _adjust_particle(name, pronoun, old)
+                replacement_name = pronoun
             fixed_masked = fixed_masked[:occ.start()] + new + fixed_masked[occ.end():]
             fixes += 1
-            details.append(f"회차 이름과다: '{old}' → '{new}'")
+            details.append(f"회차 한도 초과 ({name} limit={limit}): '{old}' → '{new}'")
             occurrences = occurrences[:-1]
 
     # 4) 대사 복원

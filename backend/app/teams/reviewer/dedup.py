@@ -1,13 +1,15 @@
-"""결정론적 중복 감지·제거 — 문단 중복 + 구문 반복.
+"""결정론적 중복 감지·제거 + 금지어 감소기.
 
 LLM이 생성한 텍스트에서:
 1. 거의 동일한 문단이 중복되면 뒤의 것 제거
-2. 동일 구문이 3회 이상 반복되면 2개까지만 남기고 나머지 제거
+2. 정확히 일치하는 문장이 2회 이상 등장하면 뒤의 것 제거
+3. 동일 구문이 3회 이상 반복되면 2개까지만 남기고 나머지 제거
+4. 금지어(미세하게 등)가 회차 한계를 초과하면 초과분 제거
 """
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -16,6 +18,7 @@ class DedupResult:
     fixed: str
     removed_paragraphs: int
     removed_phrases: int
+    removed_banned_words: int
     details: list[str]
 
 
@@ -76,6 +79,107 @@ def _split_sentences(text: str) -> list[str]:
         sentences[i] = sent
 
     return sentences
+
+
+# ── 금지어 감소기 ──────────────────────────────────────────────────────────────
+
+# 부사/수식어: "미세하게 달라 보였다" → "달라 보였다" (삭제만)
+_BANNED_ADVERBS: dict[str, int] = {
+    "미세하게": 3,       # 3회까지 허용, 4회부터 삭제
+    "미묘하게": 2,
+}
+
+# 추상 동사+보조동사: "계산을 시작했다", "불일치를 포착했다" — 문장 단위로 삭제
+_BANNED_VERB_PHRASES: list[str] = [
+    "불일치를 포착",
+    "불일치를 감지",
+    "불일치를 인식",
+    "미세한 불일치",
+    "이질적인",
+    "물리적 흐름",
+    "물리적 법칙",
+    "존재론적",
+    "에너지 흐름",
+]
+
+
+def _reduce_banned_words(text: str) -> tuple[str, int, list[str]]:
+    """금지어 출현을 한계 이하로 축소. 삭제 방식.
+
+    부사는 단순 삭제. 구문은 문장 전체 삭제.
+    """
+    result = text
+    total_removed = 0
+    details: list[str] = []
+
+    # 1) 부사 감소: 대사 마스킹 후 치환
+    masked = result
+    dialogue_spans: list[tuple[str, str]] = []
+    idx = 0
+    changed = True
+    while changed:
+        changed = False
+        for pat in [r'"[^"]*"', r'"[^"]*"', r'\[.*?\]']:
+            m = re.search(pat, masked)
+            if m:
+                key = f"\x00BW{idx}\x00"
+                dialogue_spans.append((key, m.group()))
+                masked = masked[:m.start()] + key + masked[m.end():]
+                idx += 1
+                changed = True
+                break
+
+    for adverb, limit in _BANNED_ADVERBS.items():
+        occurrences = list(re.finditer(re.escape(adverb), masked))
+        if len(occurrences) <= limit:
+            continue
+        for occ in reversed(occurrences[limit:]):
+            masked = masked[:occ.start()] + masked[occ.end():]
+            total_removed += 1
+            details.append(f"금지어 감소: '{adverb}' 제거 (한계 {limit}회 초과)")
+
+    for key, original in dialogue_spans:
+        masked = masked.replace(key, original)
+    result = masked
+
+    # 2) 금지 구문: 대사/시스템창 보호 후, 해당 문장 전체 삭제
+    masked = result
+    dialogue_spans = []
+    idx = 0
+    changed = True
+    while changed:
+        changed = False
+        for pat in [r'"[^"]*"', r'"[^"]*"', r'\[.*?\]']:
+            m = re.search(pat, masked)
+            if m:
+                key = f"\x00BP{idx}\x00"
+                dialogue_spans.append((key, m.group()))
+                masked = masked[:m.start()] + key + masked[m.end():]
+                idx += 1
+                changed = True
+                break
+
+    for phrase in _BANNED_VERB_PHRASES:
+        # 해당 구문을 포함하는 문장을 찾아 삭제
+        lines = masked.split("\n")
+        new_lines: list[str] = []
+        for line in lines:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or stripped.startswith(">"):
+                new_lines.append(line)
+                continue
+            if phrase in stripped:
+                total_removed += 1
+                details.append(f"금지구문 삭제: '{stripped[:50]}...' ({phrase})")
+                continue
+            new_lines.append(line)
+        masked = "\n".join(new_lines)
+
+    for key, original in dialogue_spans:
+        masked = masked.replace(key, original)
+    result = masked
+
+    return result, total_removed, details
 
 
 def remove_duplicates(
@@ -247,10 +351,36 @@ def remove_duplicates(
     if phrases_removed > 0 or removed_paras > 0:
         result = masked
 
+    # ── Phase 3.5: 정확히 일치하는 문장 중복 제거 (줄 단위)
+    #    "오늘 아침은 이걸로 할게요"가 두 줄에 걸쳐 중복되는 버그를 잡는다.
+    line_seen: dict[str, str] = {}  # 정규화 → 원본
+    dup_lines: list[str] = []
+    out_lines: list[str] = []
+    for line in result.split("\n"):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or stripped.startswith(">"):
+            out_lines.append(line)
+            continue
+        norm = _normalize(stripped)
+        if norm in line_seen:
+            dup_lines.append(stripped)
+            removed_paras += 1
+            details.append(f"문장 중복(정확히 일치): '{stripped[:50]}...'")
+        else:
+            line_seen[norm] = stripped
+            out_lines.append(line)
+    if dup_lines:
+        result = "\n".join(out_lines)
+
+    # ── Phase 4: 금지어 감소
+    result, banned_removed, banned_details = _reduce_banned_words(result)
+    details.extend(banned_details)
+
     return DedupResult(
         original=draft,
         fixed=result,
         removed_paragraphs=removed_paras,
         removed_phrases=phrases_removed,
+        removed_banned_words=banned_removed,
         details=details,
     )

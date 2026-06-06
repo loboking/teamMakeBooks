@@ -293,13 +293,9 @@ def _repetition_review_node(state: PipelineState) -> dict:
 
     def _all_within_limits(c: dict) -> tuple[bool, str]:
         """검사 결과 + 실패 사유. 통과 시 (True, "")."""
-        # 인물별 한계
-        for full, cnt in c.get("names", {}).items():
-            lim = name_limits.get(full, {"full": 7, "short": 25})
-            if cnt.get("full", 0) > lim["full"]:
-                return False, f"{full}={cnt['full']}>{lim['full']}"
-            if cnt.get("short", 0) > lim["short"]:
-                return False, f"{full}_short={cnt['short']}>{lim['short']}"
+        # 인물별 한계 — 가드레일이 처리하므로 반려 사유에서 제외
+        # for full, cnt in c.get("names", {}).items():
+        #     ...
         # 동작동사 ≤4 (조금 완화)
         for verb, c2 in c.get("동작동사", {}).items():
             if c2 > 4:
@@ -457,11 +453,18 @@ def _pronoun_fix_node(state: PipelineState) -> dict:
 
     # Step 1: 중복 문단·반복 구문 제거
     dedup_result = remove_duplicates(current)
-    if dedup_result.removed_paragraphs > 0 or dedup_result.removed_phrases > 0:
+    if dedup_result.removed_paragraphs > 0 or dedup_result.removed_phrases > 0 or dedup_result.removed_banned_words > 0:
         current = dedup_result.fixed
-        print(f"[dedup] 문단 {dedup_result.removed_paragraphs}개 + 구문 {dedup_result.removed_phrases}개 제거")
+        parts = []
+        if dedup_result.removed_paragraphs > 0:
+            parts.append(f"문단 {dedup_result.removed_paragraphs}개")
+        if dedup_result.removed_phrases > 0:
+            parts.append(f"구문 {dedup_result.removed_phrases}개")
+        if dedup_result.removed_banned_words > 0:
+            parts.append(f"금지어 {dedup_result.removed_banned_words}개")
+        print(f"[dedup] {' + '.join(parts)} 제거")
     else:
-        print("[dedup] 중복 없음")
+        print("[dedup] 중복/금지어 없음")
 
     # Step 2: 성별 대명사 치환
     if characters:
